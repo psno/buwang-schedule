@@ -1,0 +1,138 @@
+[
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 1,
+    "period": 2,
+    "teacher": "邓旭洲",
+    "color": 0
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 1,
+    "period": 4,
+    "teacher": "邓旭洲",
+    "color": 1
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 2,
+    "period": 4,
+    "teacher": "邓旭洲",
+    "color": 2
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 2,
+    "period": 3,
+    "teacher": "邓旭洲",
+    "color": 3
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 3,
+    "period": 7,
+    "teacher": "邓旭洲",
+    "color": 4
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 4,
+    "period": 7,
+    "teacher": "邓旭洲",
+    "color": 5
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 3,
+    "period": 9,
+    "teacher": "邓旭洲",
+    "color": 6
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 5,
+    "period": 9,
+    "teacher": "邓旭洲",
+    "color": 7
+  },
+  {
+    "name": "高一9班",
+    "subject": "数学",
+    "dayOfWeek": 3,
+    "period": 12,
+    "teacher": "邓旭洲",
+    "color": 8
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 5,
+    "period": 12,
+    "teacher": "邓旭洲",
+    "color": 9
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 4,
+    "period": 6,
+    "teacher": "邓旭洲",
+    "color": 0
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 5,
+    "period": 10,
+    "teacher": "邓旭洲",
+    "color": 1
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 6,
+    "period": 2,
+    "teacher": "邓旭洲",
+    "color": 2
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 6,
+    "period": 2,
+    "teacher": "邓旭洲",
+    "color": 3
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 6,
+    "period": 3,
+    "teacher": "邓旭洲",
+    "color": 4
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 6,
+    "period": 3,
+    "teacher": "邓旭洲",
+    "color": 5
+  },
+  {
+    "name": "高一1班",
+    "subject": "数学",
+    "dayOfWeek": 6,
+    "period": 1,
+    "teacher": "邓旭洲",
+    "color": 6
+  }
+]
