@@ -46,7 +46,9 @@
 
 ### Android
 
-前往 [Releases](https://github.com/psno/buwang-schedule/releases) 页面下载最新 APK。
+**最新版本：[v1.4.4](https://github.com/psno/buwang-schedule/releases/tag/v1.4.4)**
+
+前往 [Releases](https://github.com/psno/buwang-schedule/releases) 页面下载 APK。
 
 ### iOS
 
