@@ -4,7 +4,7 @@
     "subject": "数学",
     "dayOfWeek": 1,
     "period": 2,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 0
   },
   {
@@ -12,7 +12,7 @@
     "subject": "数学",
     "dayOfWeek": 1,
     "period": 4,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 1
   },
   {
@@ -20,7 +20,7 @@
     "subject": "数学",
     "dayOfWeek": 2,
     "period": 4,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 2
   },
   {
@@ -28,7 +28,7 @@
     "subject": "数学",
     "dayOfWeek": 2,
     "period": 3,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 3
   },
   {
@@ -36,7 +36,7 @@
     "subject": "数学",
     "dayOfWeek": 3,
     "period": 7,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 4
   },
   {
@@ -44,7 +44,7 @@
     "subject": "数学",
     "dayOfWeek": 4,
     "period": 7,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 5
   },
   {
@@ -52,7 +52,7 @@
     "subject": "数学",
     "dayOfWeek": 3,
     "period": 9,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 6
   },
   {
@@ -60,7 +60,7 @@
     "subject": "数学",
     "dayOfWeek": 5,
     "period": 9,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 7
   },
   {
@@ -68,7 +68,7 @@
     "subject": "数学",
     "dayOfWeek": 3,
     "period": 12,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 8
   },
   {
@@ -76,7 +76,7 @@
     "subject": "数学",
     "dayOfWeek": 5,
     "period": 12,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 9
   },
   {
@@ -84,7 +84,7 @@
     "subject": "数学",
     "dayOfWeek": 4,
     "period": 6,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 0
   },
   {
@@ -92,7 +92,7 @@
     "subject": "数学",
     "dayOfWeek": 5,
     "period": 10,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 1
   },
   {
@@ -100,7 +100,7 @@
     "subject": "数学",
     "dayOfWeek": 6,
     "period": 2,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 2
   },
   {
@@ -108,7 +108,7 @@
     "subject": "数学",
     "dayOfWeek": 6,
     "period": 2,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 3
   },
   {
@@ -116,7 +116,7 @@
     "subject": "数学",
     "dayOfWeek": 6,
     "period": 3,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 4
   },
   {
@@ -124,7 +124,7 @@
     "subject": "数学",
     "dayOfWeek": 6,
     "period": 3,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 5
   },
   {
@@ -132,7 +132,7 @@
     "subject": "数学",
     "dayOfWeek": 6,
     "period": 1,
-    "teacher": "邓旭洲",
+    "teacher": "张老师",
     "color": 6
   }
 ]
