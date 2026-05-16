@@ -193,8 +193,9 @@ class HtmlScheduleParser {
   // ═══════════════════════════════════════════════
 
   /// Parse a schedule map structure:
-  ///   Weekday: { "period": { "dayOfWeek": "html_string", ... }, ... }
-  ///   Saturday: { "period": { "round": "html_string", ... }, ... }
+  ///   Weekday (SCHEDULE_MF):  { "period": { "dayOfWeek": "html" } }
+  ///   Saturday (SAT_CONFIG):  { "rotation_type": { "period_index": "html" } }
+  ///   Note: outer/inner key meanings are SWAPPED between MF and SAT!
   static List<Course> _parseScheduleMap(
     Map<String, dynamic> scheduleMap, {
     String? teacher,
@@ -203,13 +204,13 @@ class HtmlScheduleParser {
     final List<Course> courses = [];
     int colorCounter = 0;
 
-    scheduleMap.forEach((periodStr, dayMap) {
-      final period = int.tryParse(periodStr);
-      if (period == null || dayMap is! Map) return;
+    scheduleMap.forEach((outerKey, innerMap) {
+      final outerVal = int.tryParse(outerKey);
+      if (outerVal == null || innerMap is! Map) return;
 
-      (dayMap as Map<String, dynamic>).forEach((dayStr, htmlValue) {
-        final dayOfWeek = int.tryParse(dayStr);
-        if (dayOfWeek == null) return;
+      (innerMap as Map<String, dynamic>).forEach((innerKey, htmlValue) {
+        final innerVal = int.tryParse(innerKey);
+        if (innerVal == null) return;
 
         final htmlStr = htmlValue?.toString();
         if (htmlStr == null || htmlStr.isEmpty || htmlStr == 'null') return;
@@ -221,16 +222,29 @@ class HtmlScheduleParser {
         // Parse the HTML into name + subject
         final parsed = _parseCourseHtml(htmlStr);
 
-        courses.add(Course(
-          name: parsed.name,
-          subject: parsed.subject,
-          dayOfWeek: isSaturday ? 6 : dayOfWeek,
-          period: period,
-          teacher: teacher,
-          color: colorCounter++ % 10,
-          // Saturday: inner key is round number; weekday: no round
-          round: isSaturday ? dayOfWeek : 0,
-        ));
+        if (isSaturday) {
+          // SAT_CONFIG: outer=rotation_type, inner=period_index
+          courses.add(Course(
+            name: parsed.name,
+            subject: parsed.subject,
+            dayOfWeek: 6,
+            period: innerVal,      // inner key = 节次
+            teacher: teacher,
+            color: colorCounter++ % 10,
+            round: outerVal,       // outer key = 轮次
+          ));
+        } else {
+          // SCHEDULE_MF: outer=period, inner=dayOfWeek
+          courses.add(Course(
+            name: parsed.name,
+            subject: parsed.subject,
+            dayOfWeek: innerVal,   // inner key = 星期几
+            period: outerVal,      // outer key = 节次
+            teacher: teacher,
+            color: colorCounter++ % 10,
+            round: 0,
+          ));
+        }
       });
     });
 
