@@ -3,6 +3,7 @@ import 'dart:async';
 
 import '../models/course.dart';
 import '../models/app_mode.dart';
+import '../models/saturday_mode.dart';
 import '../utils/constants.dart';
 import '../utils/extensions.dart';
 import '../services/database_service.dart';
@@ -72,7 +73,18 @@ class _HomeScreenState extends State<HomeScreen> {
       // weekday: 1=Monday..7=Sunday, dayOfWeek in DB: 1=Mon..6=Sat
       final today = DateTime.now().weekday;
       if (today <= 6) {
-        _todayCourses = await _db.getCoursesForDay(today);
+        if (today == 6) {
+          // 周六：按轮次过滤
+          final satMode = await _db.getSetting('saturday_mode');
+          final mode = SaturdayMode.values[int.tryParse(satMode ?? '0') ?? 0];
+          if (mode != SaturdayMode.off) {
+            _todayCourses = await _db.getSaturdayCourses(mode.index);
+          } else {
+            _todayCourses = [];
+          }
+        } else {
+          _todayCourses = await _db.getCoursesForDay(today);
+        }
       } else {
         _todayCourses = [];
       }

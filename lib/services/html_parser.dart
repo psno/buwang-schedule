@@ -193,7 +193,8 @@ class HtmlScheduleParser {
   // ═══════════════════════════════════════════════
 
   /// Parse a schedule map structure:
-  ///   { "period": { "dayOfWeek": "html_string", ... }, ... }
+  ///   Weekday: { "period": { "dayOfWeek": "html_string", ... }, ... }
+  ///   Saturday: { "period": { "round": "html_string", ... }, ... }
   static List<Course> _parseScheduleMap(
     Map<String, dynamic> scheduleMap, {
     String? teacher,
@@ -227,6 +228,8 @@ class HtmlScheduleParser {
           period: period,
           teacher: teacher,
           color: colorCounter++ % 10,
+          // Saturday: inner key is round number; weekday: no round
+          round: isSaturday ? dayOfWeek : 0,
         ));
       });
     });

@@ -8,7 +8,7 @@ class AppConstants {
 
   // ─── App Info ───
   static const String appName = '不忘课表';
-  static const String appVersion = '1.4.4';
+  static const String appVersion = '1.4.5';
 
   // ─── Storage Keys ───
   static const String keyThemeMode = 'theme_mode';

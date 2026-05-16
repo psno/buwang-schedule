@@ -7,6 +7,7 @@ class Course {
   final String? location;  // 地点
   final String? teacher;   // 教师
   final int color;         // color index
+  final int round;         // 周六轮次 (0=非周六, 1/2/3...=轮次)
 
   Course({
     this.id,
@@ -17,6 +18,7 @@ class Course {
     this.location,
     this.teacher,
     this.color = 0,
+    this.round = 0,
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +31,7 @@ class Course {
       'location': location,
       'teacher': teacher,
       'color': color,
+      'round': round,
     };
   }
 
@@ -42,6 +45,7 @@ class Course {
       location: map['location'] as String?,
       teacher: map['teacher'] as String?,
       color: map['color'] as int? ?? 0,
+      round: map['round'] as int? ?? 0,
     );
   }
 
@@ -54,6 +58,7 @@ class Course {
     String? location,
     String? teacher,
     int? color,
+    int? round,
   }) {
     return Course(
       id: id ?? this.id,
@@ -64,12 +69,13 @@ class Course {
       location: location ?? this.location,
       teacher: teacher ?? this.teacher,
       color: color ?? this.color,
+      round: round ?? this.round,
     );
   }
 
   @override
   String toString() {
-    return 'Course(id: $id, name: $name, subject: $subject, dayOfWeek: $dayOfWeek, period: $period, location: $location, teacher: $teacher, color: $color)';
+    return 'Course(id: $id, name: $name, subject: $subject, dayOfWeek: $dayOfWeek, period: $period, round: $round, location: $location, teacher: $teacher, color: $color)';
   }
 
   @override
@@ -81,6 +87,7 @@ class Course {
         other.subject == subject &&
         other.dayOfWeek == dayOfWeek &&
         other.period == period &&
+        other.round == round &&
         other.location == location &&
         other.teacher == teacher &&
         other.color == color;
@@ -88,6 +95,6 @@ class Course {
 
   @override
   int get hashCode {
-    return Object.hash(id, name, subject, dayOfWeek, period, location, teacher, color);
+    return Object.hash(id, name, subject, dayOfWeek, period, round, location, teacher, color);
   }
 }

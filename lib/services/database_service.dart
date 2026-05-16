@@ -14,7 +14,7 @@ class DatabaseService {
 
   Database? _database;
   static const String _dbName = 'buwang_schedule.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2;
 
   /// Get the database, creating it if needed.
   Future<Database> get database async {
@@ -46,7 +46,8 @@ class DatabaseService {
         period INTEGER NOT NULL,
         location TEXT,
         teacher TEXT,
-        color INTEGER DEFAULT 0
+        color INTEGER DEFAULT 0,
+        round INTEGER DEFAULT 0
       )
     ''');
 
@@ -89,7 +90,10 @@ class DatabaseService {
 
   /// Handle database upgrades.
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Future migrations go here
+    if (oldVersion < 2) {
+      // v2: 添加周六轮次字段
+      await db.execute('ALTER TABLE courses ADD COLUMN round INTEGER DEFAULT 0');
+    }
   }
 
   // ═══════════════════════════════════════════
@@ -140,6 +144,18 @@ class DatabaseService {
       'courses',
       where: 'dayOfWeek = ?',
       whereArgs: [dayOfWeek],
+      orderBy: 'period',
+    );
+    return maps.map((m) => Course.fromMap(m)).toList();
+  }
+
+  /// 获取周六指定轮次的课程
+  Future<List<Course>> getSaturdayCourses(int round) async {
+    final db = await database;
+    final maps = await db.query(
+      'courses',
+      where: 'dayOfWeek = 6 AND round = ?',
+      whereArgs: [round],
       orderBy: 'period',
     );
     return maps.map((m) => Course.fromMap(m)).toList();

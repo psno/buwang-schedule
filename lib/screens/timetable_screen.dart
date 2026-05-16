@@ -106,9 +106,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
     return _dateForColumn(col).isSameDate(DateTime.now());
   }
 
+  /// 周六模式对应的轮次编号 (round 字段值)
+  int get _saturdayRound => _saturdayMode.index; // off=0, round1=1, round2=2, round3=3
+
   /// Get courses for a specific day column.
   List<Course> _coursesForColumn(int col) {
     final dayOfWeek = col + 1; // 1=Mon..6=Sat
+    if (dayOfWeek == 6 && _saturdayMode != SaturdayMode.off) {
+      // 周六：按轮次过滤
+      return _allCourses.where((c) => c.dayOfWeek == 6 && c.round == _saturdayRound).toList();
+    }
     return _allCourses.where((c) => c.dayOfWeek == dayOfWeek).toList();
   }
 

@@ -1,7 +1,7 @@
 name: buwang_schedule
 description: '不忘课表 - 个人课程管理工具'
 publish_to: 'none'
-version: 1.4.4+8
+version: 1.4.5+9
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
