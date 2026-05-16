@@ -573,8 +573,10 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
     for (int col = 0; col < _visibleDays; col++) {
       final dayOfWeek = col + 1;
+      // 周六时需要按轮次过滤
       final course = _allCourses.cast<Course?>().firstWhere(
-            (c) => c!.dayOfWeek == dayOfWeek && c.period == period,
+            (c) => c!.dayOfWeek == dayOfWeek && c.period == period
+                && (dayOfWeek != 6 || c.round == _saturdayRound),
             orElse: () => null,
           );
       final today = _isToday(col);
