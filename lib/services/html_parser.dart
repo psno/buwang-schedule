@@ -53,26 +53,36 @@ class HtmlScheduleParser {
     String? teacher = teacherName;
     if (teacher == null || teacher.isEmpty) {
       // Try <title> tag
-      final titleMatch = RegExp(r'<title>(.*?)</title>', dotAll: true).firstMatch(html);
+      final titleMatch =
+          RegExp(r'<title>(.*?)</title>', dotAll: true).firstMatch(html);
       if (titleMatch != null) {
         teacher = _stripTags(titleMatch.group(1)!).trim();
       }
     }
     if ((teacher == null || teacher.isEmpty) && fallbackFilename != null) {
       // Derive from filename, e.g. "张老师.html" → "张老师"
-      teacher = fallbackFilename.replaceAll(RegExp(r'\.(html?|htm)$', caseSensitive: false), '').trim();
+      teacher = fallbackFilename
+          .replaceAll(RegExp(r'\.(html?|htm)$', caseSensitive: false), '')
+          .trim();
     }
 
     // ── Parse SCHEDULE_MF (weekday schedule) ──
     final scheduleMf = _extractJsonVariable(html, 'SCHEDULE_MF');
     if (scheduleMf != null) {
-      courses.addAll(_parseScheduleMap(scheduleMf, teacher: teacher, isSaturday: false));
+      courses.addAll(
+          _parseScheduleMap(scheduleMf, teacher: teacher, isSaturday: false));
     }
 
     // ── Parse SCHEDULE_SAT_CONFIG (Saturday schedule) ──
     final scheduleSat = _extractJsonVariable(html, 'SCHEDULE_SAT_CONFIG');
     if (scheduleSat != null) {
-      courses.addAll(_parseScheduleMap(scheduleSat, teacher: teacher, isSaturday: true));
+      courses.addAll(
+          _parseScheduleMap(scheduleSat, teacher: teacher, isSaturday: true));
+    }
+
+    // 新版教务系统 "const DATA = {...}" schema（旧变量都不存在时）
+    if (scheduleMf == null && scheduleSat == null) {
+      courses.addAll(_parseDataSchema(html, teacher: teacher));
     }
 
     return ParseResult(
@@ -86,10 +96,11 @@ class HtmlScheduleParser {
   // ═══════════════════════════════════════════════
 
   /// Extract a JavaScript/JSON object from a `const VAR_NAME = {...};` declaration.
-  static Map<String, dynamic>? _extractJsonVariable(String html, String varName) {
+  static Map<String, dynamic>? _extractJsonVariable(
+      String html, String varName) {
     // 策略1: 精确匹配 const VAR = {...};
     final pattern = RegExp(
-      r"(?:const|var|let)\s+$varName\s*=\s*(\{.*?\});",
+      r'(?:const|var|let)\s+' + varName + r'\s*=\s*(\{.*?\});',
       dotAll: true,
     );
     var match = pattern.firstMatch(html);
@@ -100,7 +111,7 @@ class HtmlScheduleParser {
 
     // 策略2: 不要求末尾分号
     final patternNoSemi = RegExp(
-      r"(?:const|var|let)\s+$varName\s*=\s*(\{.*\})",
+      r'(?:const|var|let)\s+' + varName + r'\s*=\s*(\{.*\})',
       dotAll: true,
     );
     match = patternNoSemi.firstMatch(html);
@@ -110,7 +121,7 @@ class HtmlScheduleParser {
     }
 
     // 策略3: 手动花括号配对提取
-    final idx = html.indexOf('$varName');
+    final idx = html.indexOf(varName);
     if (idx < 0) return null;
     final eqIdx = html.indexOf('=', idx + varName.length);
     if (eqIdx < 0) return null;
@@ -123,7 +134,10 @@ class HtmlScheduleParser {
       if (html[i] == '{') depth++;
       if (html[i] == '}') {
         depth--;
-        if (depth == 0) { end = i; break; }
+        if (depth == 0) {
+          end = i;
+          break;
+        }
       }
     }
     if (end > braceIdx) {
@@ -172,7 +186,7 @@ class HtmlScheduleParser {
   /// 调试用：返回 JSON 提取每步的结果描述
   static String extractJsonDebug(String html, String varName) {
     final pattern = RegExp(
-      r"(?:const|var|let)\s+$varName\s*=\s*(\{.*?\});",
+      r'(?:const|var|let)\s+' + varName + r'\s*=\s*(\{.*?\});',
       dotAll: true,
     );
     final match = pattern.firstMatch(html);
@@ -228,18 +242,18 @@ class HtmlScheduleParser {
             name: parsed.name,
             subject: parsed.subject,
             dayOfWeek: 6,
-            period: innerVal,      // inner key = 节次
+            period: innerVal, // inner key = 节次
             teacher: teacher,
             color: colorCounter++ % 10,
-            round: outerVal,       // outer key = 轮次
+            round: outerVal, // outer key = 轮次
           ));
         } else {
           // SCHEDULE_MF: outer=period, inner=dayOfWeek
           courses.add(Course(
             name: parsed.name,
             subject: parsed.subject,
-            dayOfWeek: innerVal,   // inner key = 星期几
-            period: outerVal,      // outer key = 节次
+            dayOfWeek: innerVal, // inner key = 星期几
+            period: outerVal, // outer key = 节次
             teacher: teacher,
             color: colorCounter++ % 10,
             round: 0,
@@ -247,6 +261,58 @@ class HtmlScheduleParser {
         }
       });
     });
+
+    return courses;
+  }
+
+  /// 解析新版教务系统导出的 const DATA = {...}：
+  ///   DATA.mf  = { "星期(1-5)": { "节次": {"t": 科目, "s": 班级} } }
+  ///   DATA.sat = { "轮次(1-3)": { "节次": {"t": 科目, "s": 班级} } }
+  /// 值为 {t,s} 对象，与旧版 HTML 字符串结构完全不同。
+  static List<Course> _parseDataSchema(String html, {String? teacher}) {
+    final Map<String, dynamic>? data = _extractJsonVariable(html, 'DATA');
+    if (data == null) return <Course>[];
+
+    final List<Course> courses = [];
+    int colorCounter = 0;
+
+    void parseSection(
+      dynamic section,
+      int Function(String outerKey) dayOf,
+      int Function(String outerKey) roundOf,
+    ) {
+      if (section is! Map) return;
+      section.forEach((outerKey, periods) {
+        if (periods is! Map) return;
+        final dayOfWeek = dayOf(outerKey.toString());
+        final round = roundOf(outerKey.toString());
+        if (dayOfWeek < 1 || dayOfWeek > 7) return;
+        periods.forEach((periodKey, value) {
+          final period = int.tryParse(periodKey.toString());
+          if (period == null || period < 0 || period >= 13 || value is! Map) {
+            return;
+          }
+          final subject = (value['t'] ?? '').toString().trim();
+          final className = (value['s'] ?? '').toString().trim();
+          final name = className.isNotEmpty ? className : subject;
+          if (name.isEmpty) return;
+          courses.add(Course(
+            name: name,
+            subject: subject.isEmpty ? null : subject,
+            dayOfWeek: dayOfWeek,
+            period: period,
+            teacher: teacher,
+            color: colorCounter++ % 10,
+            round: round,
+          ));
+        });
+      });
+    }
+
+    // mf: 外层键=星期，内层键=节次；非周六 round=0
+    parseSection(data['mf'], (k) => int.tryParse(k) ?? -1, (_) => 0);
+    // sat: 外层键=轮次，内层键=节次；固定周六 round=外层键
+    parseSection(data['sat'], (_) => 6, (k) => int.tryParse(k) ?? 0);
 
     return courses;
   }

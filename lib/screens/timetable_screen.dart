@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/course.dart';
 import '../models/app_mode.dart';
 import '../utils/constants.dart';
 import '../utils/extensions.dart';
 import '../services/database_service.dart';
+import '../services/time_slot_service.dart';
 import '../models/saturday_mode.dart';
 import '../theme/app_theme.dart';
 
@@ -39,15 +39,37 @@ class _TimetableScreenState extends State<TimetableScreen> {
     _loadSaturdayMode();
     _loadSchoolType();
     _loadUserRole();
+    // 课程数据变更（导入/编辑）后刷新：IndexedStack 常驻页面不会自动重建。
+    DatabaseService.dataVersion.addListener(_onCourseDataChanged);
+    // 作息时间编辑保存后即时刷新课表时间列与当前/下一节高亮。
+    TimeSlotService.timeSlotVersion.addListener(_onTimeSlotChanged);
+  }
+
+  void _onCourseDataChanged() {
+    if (mounted) _loadCourses();
+  }
+
+  void _onTimeSlotChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    DatabaseService.dataVersion.removeListener(_onCourseDataChanged);
+    TimeSlotService.timeSlotVersion.removeListener(_onTimeSlotChanged);
+    super.dispose();
   }
 
   Future<void> _loadSchoolType() async {
     try {
       final value = await _db.getSetting(AppConstants.keySchoolType);
       if (value != null && mounted) {
-        setState(() {
-          _schoolType = SchoolType.values[int.tryParse(value) ?? 0];
-        });
+        final index = int.tryParse(value) ?? 0;
+        if (index >= 0 && index < SchoolType.values.length) {
+          setState(() {
+            _schoolType = SchoolType.values[index];
+          });
+        }
       }
     } catch (_) {}
   }
@@ -56,12 +78,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
     try {
       final value = await _db.getSetting(AppConstants.keyUserRole);
       if (value != null && mounted) {
-        setState(() {
-          _userRole = UserRole.values[int.tryParse(value) ?? 0];
-        });
+        final index = int.tryParse(value) ?? 0;
+        if (index >= 0 && index < UserRole.values.length) {
+          setState(() {
+            _userRole = UserRole.values[index];
+          });
+        }
       }
     } catch (_) {}
   }
+
   Future<void> _loadCourses() async {
     setState(() => _isLoading = true);
     try {
@@ -76,9 +102,12 @@ class _TimetableScreenState extends State<TimetableScreen> {
     try {
       final value = await _db.getSetting('saturday_mode');
       if (value != null && mounted) {
-        setState(() {
-          _saturdayMode = SaturdayMode.values[int.tryParse(value) ?? 0];
-        });
+        final index = int.tryParse(value) ?? 0;
+        if (index >= 0 && index < SaturdayMode.values.length) {
+          setState(() {
+            _saturdayMode = SaturdayMode.values[index];
+          });
+        }
       }
     } catch (_) {}
   }
@@ -107,14 +136,17 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   /// 周六模式对应的轮次编号 (round 字段值)
-  int get _saturdayRound => _saturdayMode.index; // off=0, round1=1, round2=2, round3=3
+  int get _saturdayRound =>
+      _saturdayMode.index; // off=0, round1=1, round2=2, round3=3
 
   /// Get courses for a specific day column.
   List<Course> _coursesForColumn(int col) {
     final dayOfWeek = col + 1; // 1=Mon..6=Sat
     if (dayOfWeek == 6 && _saturdayMode != SaturdayMode.off) {
       // 周六：按轮次过滤
-      return _allCourses.where((c) => c.dayOfWeek == 6 && c.round == _saturdayRound).toList();
+      return _allCourses
+          .where((c) => c.dayOfWeek == 6 && c.round == _saturdayRound)
+          .toList();
     }
     return _allCourses.where((c) => c.dayOfWeek == dayOfWeek).toList();
   }
@@ -123,7 +155,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
   bool _isCurrentClass(Course course, int col) {
     if (!_isToday(col)) return false;
     final now = DateTime.now();
-    final slot = getTimeSlot(course.period, dayOfWeek: course.dayOfWeek, schoolType: _schoolType);
+    final slot = getTimeSlot(course.period,
+        dayOfWeek: course.dayOfWeek, schoolType: _schoolType);
     final nowMin = now.hour * 60 + now.minute;
     final startMin = slot.startTime.hour * 60 + slot.startTime.minute;
     final endMin = slot.endTime.hour * 60 + slot.endTime.minute;
@@ -134,14 +167,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
   bool _isNextClass(Course course, int col) {
     if (!_isToday(col)) return false;
     final now = DateTime.now();
-    final slot = getTimeSlot(course.period, dayOfWeek: course.dayOfWeek, schoolType: _schoolType);
+    final slot = getTimeSlot(course.period,
+        dayOfWeek: course.dayOfWeek, schoolType: _schoolType);
     final nowMin = now.hour * 60 + now.minute;
     final startMin = slot.startTime.hour * 60 + slot.startTime.minute;
     if (nowMin >= startMin) return false;
     // Is it the earliest upcoming?
     final todayCourses = _coursesForColumn(col);
     for (final c in todayCourses) {
-      final s = getTimeSlot(c.period, dayOfWeek: c.dayOfWeek, schoolType: _schoolType);
+      final s = getTimeSlot(c.period,
+          dayOfWeek: c.dayOfWeek, schoolType: _schoolType);
       final sMin = s.startTime.hour * 60 + s.startTime.minute;
       if (sMin > nowMin && sMin < startMin) return false;
     }
@@ -165,14 +200,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   /// Open the add/edit course bottom sheet for an empty cell.
   void _onEmptyCellTapped(int dayOfWeek, int period) {
-    final slot = getTimeSlot(period, dayOfWeek: dayOfWeek, schoolType: _schoolType);
+    final slot =
+        getTimeSlot(period, dayOfWeek: dayOfWeek, schoolType: _schoolType);
     final dayName = dayNamesShort[dayOfWeek - 1];
     _showCourseFormSheet(
       title: '添加课程',
       course: null,
       dayOfWeek: dayOfWeek,
       period: period,
-      slotLabel: '周$dayName ${slot.label} ${slot.startTime.formatted}-${slot.endTime.formatted}',
+      slotLabel:
+          '周$dayName ${slot.label} ${slot.startTime.formatted}-${slot.endTime.formatted}',
     );
   }
 
@@ -181,7 +218,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final cs = context.colorScheme;
     final ts = context.textTheme;
     final color = getCourseColor(course.color, isDark: context.isDarkMode);
-    final slot = getTimeSlot(course.period, dayOfWeek: course.dayOfWeek, schoolType: _schoolType);
+    final slot = getTimeSlot(course.period,
+        dayOfWeek: course.dayOfWeek, schoolType: _schoolType);
 
     showModalBottomSheet(
       context: context,
@@ -221,7 +259,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
             if (course.teacher != null && course.teacher!.isNotEmpty)
               _detailRow(context, Icons.person_outline, '教师', course.teacher!),
             if (course.location != null && course.location!.isNotEmpty)
-              _detailRow(context, Icons.location_on_outlined, '地点', course.location!),
+              _detailRow(
+                  context, Icons.location_on_outlined, '地点', course.location!),
             const SizedBox(height: 20),
             // Edit and Delete buttons
             Row(
@@ -236,7 +275,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         course: course,
                         dayOfWeek: course.dayOfWeek,
                         period: course.period,
-                        slotLabel: '周$dayName ${slot.label} ${slot.startTime.formatted}-${slot.endTime.formatted}',
+                        slotLabel:
+                            '周$dayName ${slot.label} ${slot.startTime.formatted}-${slot.endTime.formatted}',
                       );
                     },
                     icon: const Icon(Icons.edit, size: 18),
@@ -254,7 +294,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                     label: const Text('删除'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: cs.error,
-                      side: BorderSide(color: cs.error.withOpacity(0.5)),
+                      side: BorderSide(color: cs.error.withValues(alpha: 0.5)),
                     ),
                   ),
                 ),
@@ -280,7 +320,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除课程'),
-        content: Text('确定要删除「${_userRole == UserRole.teacher ? course.name : (course.subject ?? course.name)}」吗？此操作不可撤销。'),
+        content: Text(
+            '确定要删除「${_userRole == UserRole.teacher ? course.name : (course.subject ?? course.name)}」吗？此操作不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -297,7 +338,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 );
               }
             },
-            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error),
             child: const Text('删除'),
           ),
         ],
@@ -336,7 +378,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = context.colorScheme;
     final ts = context.textTheme;
     final monday = _weekMonday;
 
@@ -441,7 +482,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   /// Main timetable grid.
   Widget _buildTimetableGrid(BuildContext context) {
-    final cs = context.colorScheme;
     final int lastPeriod = _schoolType == SchoolType.university ? 9 : 12;
     final int periodCount = lastPeriod + 1;
 
@@ -455,7 +495,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
               // 左上角空格
               _buildTimeHeaderCell(context),
               // 时间标签列
-              ...List.generate(periodCount, (i) => _buildTimeLabelCell(context, i)),
+              ...List.generate(
+                  periodCount, (i) => _buildTimeLabelCell(context, i)),
             ],
           ),
           // ─── 可水平滚动的课表区域 ───
@@ -467,7 +508,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   // 星期头部行
                   _buildDayHeaderScrollable(context),
                   // 课程行
-                  ...List.generate(periodCount, (i) => _buildPeriodRowScrollable(context, i)),
+                  ...List.generate(periodCount,
+                      (i) => _buildPeriodRowScrollable(context, i)),
                 ],
               ),
             ),
@@ -484,17 +526,22 @@ class _TimetableScreenState extends State<TimetableScreen> {
     return GestureDetector(
       onTap: _showTimeSlotEditor,
       child: Container(
-        width: 60, height: 52,
+        width: 60,
+        height: 52,
         decoration: BoxDecoration(
           color: cs.surface,
-          border: Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.5)),
+          border:
+              Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.5)),
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('节次', style: ts.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w500)),
-              Icon(Icons.edit, size: 10, color: cs.onSurfaceVariant.withOpacity(0.5)),
+              Text('节次',
+                  style: ts.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant, fontWeight: FontWeight.w500)),
+              Icon(Icons.edit,
+                  size: 10, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
             ],
           ),
         ),
@@ -511,19 +558,29 @@ class _TimetableScreenState extends State<TimetableScreen> {
     return GestureDetector(
       onTap: _showTimeSlotEditor,
       child: Container(
-        width: 60, height: 52,
+        width: 60,
+        height: 52,
         decoration: BoxDecoration(
           color: cs.surface,
-          border: Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.3)),
+          border:
+              Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.3)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(slot.label, style: ts.labelSmall?.copyWith(fontWeight: FontWeight.w600, fontSize: 11, color: cs.onSurface), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(slot.label,
+                  style: ts.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                      color: cs.onSurface),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
               const SizedBox(height: 1),
-              Text(slot.startTime.formatted, style: ts.labelSmall?.copyWith(fontSize: 9, color: cs.onSurfaceVariant)),
+              Text(slot.startTime.formatted,
+                  style: ts.labelSmall
+                      ?.copyWith(fontSize: 9, color: cs.onSurfaceVariant)),
             ],
           ),
         ),
@@ -539,7 +596,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
       height: 52,
       decoration: BoxDecoration(
         color: cs.surface,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.5)),
+        border:
+            Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.5)),
       ),
       child: Row(
         children: List.generate(_visibleDays, (col) {
@@ -549,15 +607,25 @@ class _TimetableScreenState extends State<TimetableScreen> {
           return Container(
             width: 80,
             decoration: BoxDecoration(
-              color: today ? cs.primary.withOpacity(0.08) : Colors.transparent,
-              border: Border(left: BorderSide(color: cs.outlineVariant, width: 0.3)),
+              color: today
+                  ? cs.primary.withValues(alpha: 0.08)
+                  : Colors.transparent,
+              border: Border(
+                  left: BorderSide(color: cs.outlineVariant, width: 0.3)),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('周$dayName', style: ts.labelSmall?.copyWith(color: today ? cs.primary : cs.onSurfaceVariant, fontWeight: today ? FontWeight.bold : FontWeight.normal)),
+                Text('周$dayName',
+                    style: ts.labelSmall?.copyWith(
+                        color: today ? cs.primary : cs.onSurfaceVariant,
+                        fontWeight:
+                            today ? FontWeight.bold : FontWeight.normal)),
                 const SizedBox(height: 2),
-                Text('${date.month}/${date.day}', style: ts.labelSmall?.copyWith(color: today ? cs.primary : cs.onSurfaceVariant, fontSize: 10)),
+                Text('${date.month}/${date.day}',
+                    style: ts.labelSmall?.copyWith(
+                        color: today ? cs.primary : cs.onSurfaceVariant,
+                        fontSize: 10)),
               ],
             ),
           );
@@ -573,53 +641,101 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
     for (int col = 0; col < _visibleDays; col++) {
       final dayOfWeek = col + 1;
-      // 周六时需要按轮次过滤
-      final course = _allCourses.cast<Course?>().firstWhere(
-            (c) => c!.dayOfWeek == dayOfWeek && c.period == period
-                && (dayOfWeek != 6 || c.round == _saturdayRound),
-            orElse: () => null,
-          );
+      // 同一格可能有多门课（不同轮次 / 重复录入）：全部收集，
+      // 首门显示内容，其余以 "+N" 角标提示，点击弹出选择。
+      final matches = _allCourses
+          .where((c) =>
+              c.dayOfWeek == dayOfWeek &&
+              c.period == period &&
+              (dayOfWeek != 6 || c.round == _saturdayRound))
+          .toList();
+      final course = matches.isEmpty ? null : matches.first;
       final today = _isToday(col);
 
       Color bgColor = Colors.transparent;
-      Color borderColor = cs.outlineVariant.withOpacity(0.3);
 
       if (course != null) {
         final color = getCourseColor(course.color, isDark: context.isDarkMode);
         if (_isCurrentClass(course, col)) {
-          bgColor = AppTheme.currentClassColor.withOpacity(0.15);
-          borderColor = AppTheme.currentClassColor;
+          bgColor = AppTheme.currentClassColor.withValues(alpha: 0.15);
         } else if (_isNextClass(course, col)) {
-          bgColor = AppTheme.nextClassColor.withOpacity(0.1);
-          borderColor = AppTheme.nextClassColor;
+          bgColor = AppTheme.nextClassColor.withValues(alpha: 0.1);
         } else {
-          bgColor = color.withOpacity(0.08);
-          borderColor = color.withOpacity(0.3);
+          bgColor = color.withValues(alpha: 0.08);
         }
       } else if (today) {
-        bgColor = cs.primary.withOpacity(0.03);
+        bgColor = cs.primary.withValues(alpha: 0.03);
       }
 
       cells.add(
         GestureDetector(
           onTap: () {
-            if (course != null) { _onCourseTapped(course); } else { _onEmptyCellTapped(dayOfWeek, period); }
+            if (matches.isEmpty) {
+              _onEmptyCellTapped(dayOfWeek, period);
+            } else if (matches.length == 1) {
+              _onCourseTapped(matches.first);
+            } else {
+              _showCellCourses(matches, dayOfWeek, period);
+            }
           },
           child: Container(
-            width: 80, height: 52,
+            width: 80,
+            height: 52,
             decoration: BoxDecoration(
               color: bgColor,
-              border: Border(left: BorderSide(color: cs.outlineVariant, width: 0.3), bottom: BorderSide(color: cs.outlineVariant, width: 0.3)),
+              border: Border(
+                  left: BorderSide(color: cs.outlineVariant, width: 0.3),
+                  bottom: BorderSide(color: cs.outlineVariant, width: 0.3)),
             ),
             child: course != null
-                ? _buildCourseCell(context, course, col)
-                : Center(child: Icon(Icons.add, size: 16, color: cs.onSurfaceVariant.withOpacity(0.2))),
+                ? _buildCourseCell(context, course, col,
+                    extraCount: matches.length - 1)
+                : Center(
+                    child: Icon(Icons.add,
+                        size: 16,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.2))),
           ),
         ),
       );
     }
 
     return Row(children: cells);
+  }
+
+  /// 一格多课时，列出所有课程供选择编辑 / 删除。
+  void _showCellCourses(List<Course> courses, int dayOfWeek, int period) {
+    final ts = context.textTheme;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('该时段有 ${courses.length} 门课',
+                  style: ts.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            ),
+            ...courses.map((c) => ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor:
+                        getCourseColor(c.color, isDark: context.isDarkMode),
+                    radius: 10,
+                  ),
+                  title: Text(_userRole == UserRole.teacher
+                      ? c.name
+                      : (c.subject ?? c.name)),
+                  subtitle: c.round > 0 ? Text('周六轮次 ${c.round}') : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _onCourseTapped(c);
+                  },
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 时间段编辑器
@@ -645,7 +761,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   children: [
                     Icon(Icons.schedule, color: cs.primary),
                     const SizedBox(width: 8),
-                    Text('作息时间表（点击编辑）', style: ts.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    Text('作息时间表（点击编辑）',
+                        style: ts.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold)),
                     const Spacer(),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
@@ -662,27 +780,41 @@ class _TimetableScreenState extends State<TimetableScreen> {
                     final slot = slots[i];
                     return ListTile(
                       leading: Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(color: cs.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                        child: Center(child: Text('\${slot.period}', style: TextStyle(color: cs.primary, fontWeight: FontWeight.bold))),
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                            color: cs.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10)),
+                        child: Center(
+                            child: Text('${slot.period}',
+                                style: TextStyle(
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.bold))),
                       ),
-                      title: Text(slot.label, style: ts.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-                      subtitle: Text('\${slot.startTime.formatted} - \${slot.endTime.formatted}', style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      trailing: Icon(Icons.edit, size: 16, color: cs.onSurfaceVariant),
+                      title: Text(slot.label,
+                          style: ts.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w500)),
+                      subtitle: Text(
+                          '${slot.startTime.formatted} - ${slot.endTime.formatted}',
+                          style: ts.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant)),
+                      trailing: Icon(Icons.edit,
+                          size: 16, color: cs.onSurfaceVariant),
                       onTap: () async {
                         // 编辑开始时间
                         final newStart = await showTimePicker(
                           context: ctx,
                           initialTime: slot.startTime,
-                          helpText: '\${slot.label} 开始时间',
+                          helpText: '${slot.label} 开始时间',
                         );
                         if (newStart == null) return;
 
                         // 编辑结束时间
+                        if (!ctx.mounted) return;
                         final newEnd = await showTimePicker(
                           context: ctx,
                           initialTime: slot.endTime,
-                          helpText: '\${slot.label} 结束时间',
+                          helpText: '${slot.label} 结束时间',
                         );
                         if (newEnd == null) return;
 
@@ -708,21 +840,26 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 14, color: cs.onSurfaceVariant),
+                    Icon(Icons.info_outline,
+                        size: 14, color: cs.onSurfaceVariant),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '点击任意行编辑上下课时间，自动保存并同步到提醒',
-                        style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 12),
+                        style: ts.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant, fontSize: 12),
                       ),
                     ),
                     TextButton(
-                      onPressed: () {
+                      onPressed: () async {
+                        await TimeSlotService.instance
+                            .resetToDefault(_schoolType);
+                        final defaults =
+                            TimeSlotService.instance.getSlots(_schoolType);
                         setSheetState(() {
                           slots.clear();
-                          slots.addAll(getDefaultTimeSlots(_schoolType));
+                          slots.addAll(defaults);
                         });
-                        _saveCustomTimeSlots(slots);
                       },
                       child: const Text('恢复默认', style: TextStyle(fontSize: 12)),
                     ),
@@ -736,21 +873,20 @@ class _TimetableScreenState extends State<TimetableScreen> {
     );
   }
 
-  /// 保存自定义时间表到SharedPreferences
+  /// 保存自定义作息时间（写入 SharedPreferences 并通知刷新 / 重排提醒）
   Future<void> _saveCustomTimeSlots(List<TimeSlot> slots) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final data = slots.map((s) => '\${s.period}|\${s.startTime.hour}:\${s.startTime.minute}|\${s.endTime.hour}:\${s.endTime.minute}|\${s.label}').join(';');
-      final key = _schoolType == SchoolType.university ? 'custom_time_slots_uni' : 'custom_time_slots_hs';
-      await prefs.setString(key, data);
-      if (mounted) context.showSuccessSnackBar('时间表已保存');
+      await TimeSlotService.instance.applyCustom(_schoolType, slots);
+      if (mounted) context.showSuccessSnackBar('时间表已保存，已同步到提醒');
     } catch (e) {
-      if (mounted) context.showErrorSnackBar('保存失败: \$e');
+      if (mounted) context.showErrorSnackBar('保存失败: $e');
     }
   }
 
   /// Course content inside a timetable cell.
-  Widget _buildCourseCell(BuildContext context, Course course, int col) {
+  Widget _buildCourseCell(BuildContext context, Course course, int col,
+      {int extraCount = 0}) {
+    final cs = context.colorScheme;
     final ts = context.textTheme;
     final color = getCourseColor(course.color, isDark: context.isDarkMode);
     final isCurrent = _isCurrentClass(course, col);
@@ -776,52 +912,71 @@ class _TimetableScreenState extends State<TimetableScreen> {
       subText = course.location;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (isCurrent || isNext)
-            Container(
-              width: 6,
-              height: 6,
-              margin: const EdgeInsets.only(bottom: 2),
+    return Stack(
+      children: [
+        if (extraCount > 0)
+          Positioned(
+            right: 2,
+            top: 1,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
               decoration: BoxDecoration(
-                color: isCurrent
-                    ? AppTheme.currentClassColor
-                    : AppTheme.nextClassColor,
-                shape: BoxShape.circle,
+                color: cs.error,
+                borderRadius: BorderRadius.circular(6),
               ),
-            ),
-          Flexible(
-            child: Text(
-              mainText,
-              style: ts.labelSmall?.copyWith(
-                color: textColor,
-                fontWeight: FontWeight.w600,
-                fontSize: 10,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              child: Text('+$extraCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 8)),
             ),
           ),
-          if (subText != null && subText.isNotEmpty)
-            Text(
-              subText,
-              style: ts.labelSmall?.copyWith(
-                color: textColor.withOpacity(0.7),
-                fontSize: 8,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (isCurrent || isNext)
+                Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(bottom: 2),
+                  decoration: BoxDecoration(
+                    color: isCurrent
+                        ? AppTheme.currentClassColor
+                        : AppTheme.nextClassColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              Flexible(
+                child: Text(
+                  mainText,
+                  style: ts.labelSmall?.copyWith(
+                    color: textColor,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-        ],
-      ),
+              if (subText != null && subText.isNotEmpty)
+                Text(
+                  subText,
+                  style: ts.labelSmall?.copyWith(
+                    color: textColor.withValues(alpha: 0.7),
+                    fontSize: 8,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _detailRow(BuildContext context, IconData icon, String label, String value) {
+  Widget _detailRow(
+      BuildContext context, IconData icon, String label, String value) {
     final cs = context.colorScheme;
     final ts = context.textTheme;
 
@@ -991,9 +1146,10 @@ class _CourseFormSheetState extends State<_CourseFormSheet> {
               const SizedBox(height: 8),
               // Slot info
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1086,7 +1242,7 @@ class _CourseFormSheetState extends State<_CourseFormSheet> {
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: color.withOpacity(0.4),
+                                  color: color.withValues(alpha: 0.4),
                                   blurRadius: 8,
                                   spreadRadius: 1,
                                 ),
@@ -1094,7 +1250,8 @@ class _CourseFormSheetState extends State<_CourseFormSheet> {
                             : null,
                       ),
                       child: isSelected
-                          ? Icon(Icons.check, color: Colors.white, size: 20)
+                          ? const Icon(Icons.check,
+                              color: Colors.white, size: 20)
                           : null,
                     ),
                   );

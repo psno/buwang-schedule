@@ -9,6 +9,7 @@ import '../services/database_service.dart';
 import '../services/calendar_sync_service.dart';
 import '../services/alarm_service.dart';
 import '../services/notification_service.dart';
+import '../services/time_slot_service.dart';
 
 /// 不忘课表 - Reminder Screen (提醒)
 /// Manage course reminders and custom reminders.
@@ -39,6 +40,19 @@ class _ReminderScreenState extends State<ReminderScreen> {
   void initState() {
     super.initState();
     _loadData();
+    // 作息时间编辑保存后，若课程提醒已开启则按新时间重新排程，
+    // 兑现编辑器里「自动保存并同步到提醒」的说明。
+    TimeSlotService.timeSlotVersion.addListener(_onTimeSlotChanged);
+  }
+
+  void _onTimeSlotChanged() {
+    if (_courseRemindersEnabled) _scheduleAllNotifications();
+  }
+
+  @override
+  void dispose() {
+    TimeSlotService.timeSlotVersion.removeListener(_onTimeSlotChanged);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -103,9 +117,15 @@ class _ReminderScreenState extends State<ReminderScreen> {
     final totalWeeks = int.tryParse(weeksStr ?? '20') ?? 20;
 
     final roleStr = await _db.getSetting(AppConstants.keyUserRole);
-    final userRole = UserRole.values[int.tryParse(roleStr ?? '0') ?? 0];
+    final roleIdx = int.tryParse(roleStr ?? '0') ?? 0;
+    final userRole = (roleIdx >= 0 && roleIdx < UserRole.values.length)
+        ? UserRole.values[roleIdx]
+        : UserRole.student;
     final schoolStr = await _db.getSetting(AppConstants.keySchoolType);
-    final schoolType = SchoolType.values[int.tryParse(schoolStr ?? '0') ?? 0];
+    final schoolIdx = int.tryParse(schoolStr ?? '0') ?? 0;
+    final schoolType = (schoolIdx >= 0 && schoolIdx < SchoolType.values.length)
+        ? SchoolType.values[schoolIdx]
+        : SchoolType.highSchool;
 
     final count = await NotificationService.instance.scheduleAllCourseReminders(
       courses: _courses.map((c) => c.toMap()).toList(),
@@ -172,10 +192,13 @@ class _ReminderScreenState extends State<ReminderScreen> {
         title: const Text('删除提醒'),
         content: Text('确定删除「${reminder.name}」？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('删除', style: TextStyle(color: context.colorScheme.error)),
+            child:
+                Text('删除', style: TextStyle(color: context.colorScheme.error)),
           ),
         ],
       ),
@@ -193,7 +216,6 @@ class _ReminderScreenState extends State<ReminderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = context.colorScheme;
     final ts = context.textTheme;
 
     return Scaffold(
@@ -250,7 +272,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
+  Widget _buildSectionHeader(
+      BuildContext context, String title, IconData icon) {
     final cs = context.colorScheme;
     final ts = context.textTheme;
 
@@ -303,12 +326,13 @@ class _ReminderScreenState extends State<ReminderScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle_outline, size: 16, color: cs.primary),
+                    Icon(Icons.check_circle_outline,
+                        size: 16, color: cs.primary),
                     const SizedBox(width: 8),
                     Text(
                       _syncInfo.displayText,
@@ -323,14 +347,15 @@ class _ReminderScreenState extends State<ReminderScreen> {
             // 提前提醒时间
             Row(
               children: [
-                Icon(Icons.timer_outlined, size: 18, color: cs.onSurfaceVariant),
+                Icon(Icons.timer_outlined,
+                    size: 18, color: cs.onSurfaceVariant),
                 const SizedBox(width: 8),
                 Text('提前', style: ts.bodyMedium),
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withOpacity(0.5),
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: DropdownButton<int>(
@@ -356,8 +381,10 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 onPressed: _isSyncing ? null : _syncToCalendar,
                 icon: _isSyncing
                     ? const SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
                       )
                     : const Icon(Icons.sync),
                 label: Text(_isSyncing
@@ -372,7 +399,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
               Text(
                 '共 ${_courses.length} 个课程，将创建 ${_courses.length * 20} 个日历事件',
                 style: ts.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -403,7 +430,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 label: const Text('删除本App写入的日程'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: cs.error,
-                  side: BorderSide(color: cs.error.withOpacity(0.5)),
+                  side: BorderSide(color: cs.error.withValues(alpha: 0.5)),
                 ),
               ),
             ),
@@ -416,14 +443,16 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 label: const Text('深度清理：删除所有含「课表」的日程'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: cs.error,
-                  side: BorderSide(color: cs.error.withOpacity(0.3)),
+                  side: BorderSide(color: cs.error.withValues(alpha: 0.3)),
                 ),
               ),
             ),
             const SizedBox(height: 4),
             Text(
               '深度清理会扫描所有日历账户，包括重复的「不忘课表」分组',
-              style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant.withOpacity(0.5), fontSize: 10),
+              style: ts.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                  fontSize: 10),
             ),
           ],
         ),
@@ -463,7 +492,6 @@ class _ReminderScreenState extends State<ReminderScreen> {
     }
   }
 
-
   Future<void> _clearCalendarSync() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -471,10 +499,13 @@ class _ReminderScreenState extends State<ReminderScreen> {
         title: const Text('清除日历数据'),
         content: const Text('将删除「不忘课表」日历账户中的所有课程事件，不会影响你的其他日程。确定继续？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('确定清除', style: TextStyle(color: context.colorScheme.error)),
+            child: Text('确定清除',
+                style: TextStyle(color: context.colorScheme.error)),
           ),
         ],
       ),
@@ -499,19 +530,22 @@ class _ReminderScreenState extends State<ReminderScreen> {
     }
   }
 
-
   /// 深度清理：扫描所有日历中含"课表"的日程
   Future<void> _deepCleanCalendar() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('深度清理日历'),
-        content: const Text('将扫描所有日历，删除标题或描述中包含「课表」的所有日程。这包括本App和其他来源写入的课表相关日程。\n\n确定继续？'),
+        content: const Text(
+            '将扫描所有日历，删除标题或描述中包含「课表」的所有日程。这包括本App和其他来源写入的课表相关日程。\n\n确定继续？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('确定清理', style: TextStyle(color: context.colorScheme.error)),
+            child: Text('确定清理',
+                style: TextStyle(color: context.colorScheme.error)),
           ),
         ],
       ),
@@ -529,7 +563,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
             builder: (ctx) => AlertDialog(
               title: const Text('清理结果'),
               content: SingleChildScrollView(
-                child: Text(result.message, style: const TextStyle(fontSize: 12)),
+                child:
+                    Text(result.message, style: const TextStyle(fontSize: 12)),
               ),
               actions: [
                 TextButton(
@@ -546,7 +581,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
             builder: (ctx) => AlertDialog(
               title: const Text('清理失败'),
               content: SingleChildScrollView(
-                child: Text(result.message, style: const TextStyle(fontSize: 12)),
+                child:
+                    Text(result.message, style: const TextStyle(fontSize: 12)),
               ),
               actions: [
                 TextButton(
@@ -597,10 +633,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
         if (mounted) {
           context.showSnackBar('已自动调整为该周的周一: ${monday.month}/${monday.day}');
         }
-        await _db.setSetting(AppConstants.keySemesterStart, monday.toIso8601String());
+        await _db.setSetting(
+            AppConstants.keySemesterStart, monday.toIso8601String());
         return monday;
       }
-      await _db.setSetting(AppConstants.keySemesterStart, picked.toIso8601String());
+      await _db.setSetting(
+          AppConstants.keySemesterStart, picked.toIso8601String());
     }
     return picked;
   }
@@ -636,7 +674,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
               // Minutes before selector
               Row(
                 children: [
-                  Icon(Icons.timer_outlined, size: 18, color: cs.onSurfaceVariant),
+                  Icon(Icons.timer_outlined,
+                      size: 18, color: cs.onSurfaceVariant),
                   const SizedBox(width: 8),
                   Text('提前', style: ts.bodyMedium),
                   const SizedBox(width: 8),
@@ -644,7 +683,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
-                      color: cs.surfaceVariant.withOpacity(0.5),
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: DropdownButton<int>(
@@ -672,7 +711,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.notifications_outlined, size: 18, color: cs.onSurfaceVariant),
+                      Icon(Icons.notifications_outlined,
+                          size: 18, color: cs.onSurfaceVariant),
                       const SizedBox(width: 8),
                       Text('提醒方式', style: ts.bodyMedium),
                     ],
@@ -697,8 +737,9 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () async {
                     try {
-                      await NotificationService.instance.showTestNotification(secondsLater: 5);
-                      if (mounted) context.showSnackBar('5秒后将弹出测试通知');
+                      await NotificationService.instance
+                          .showTestNotification(secondsLater: 5);
+                      if (context.mounted) context.showSnackBar('5秒后将弹出测试通知');
                     } catch (e) {
                       // 定时失败，直接弹即时通知
                       try {
@@ -707,9 +748,11 @@ class _ReminderScreenState extends State<ReminderScreen> {
                           title: '🔔 测试提醒',
                           body: '如果你看到这条通知，说明应用内提醒功能正常！',
                         );
-                        if (mounted) context.showSnackBar('已发送即时测试通知');
+                        if (context.mounted) context.showSnackBar('已发送即时测试通知');
                       } catch (e2) {
-                        if (mounted) context.showErrorSnackBar('通知失败: $e2');
+                        if (context.mounted) {
+                          context.showErrorSnackBar('通知失败: $e2');
+                        }
                       }
                     }
                   },
@@ -723,7 +766,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -733,7 +776,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
                     Expanded(
                       child: Text(
                         '已导入 ${_courses.length} 个课程，将为每节课设置提醒',
-                        style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                        style:
+                            ts.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                       ),
                     ),
                   ],
@@ -754,9 +798,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
                     ),
                     value: weekdayOnly,
                     onChanged: (v) async {
-                      await _db.setSetting(AppConstants.keyWeekdayOnly, v ? '1' : '0');
+                      await _db.setSetting(
+                          AppConstants.keyWeekdayOnly, v ? '1' : '0');
                       setState(() {});
-                      if (mounted) context.showSnackBar(v ? '仅工作日提醒' : '每天都提醒');
+                      if (context.mounted) {
+                        context.showSnackBar(v ? '仅工作日提醒' : '每天都提醒');
+                      }
                     },
                     contentPadding: EdgeInsets.zero,
                   );
@@ -769,9 +816,9 @@ class _ReminderScreenState extends State<ReminderScreen> {
     );
   }
 
-
   /// 构建提醒方式选择按钮
-  Widget _buildMethodChip(BuildContext context, int method, IconData icon, String label) {
+  Widget _buildMethodChip(
+      BuildContext context, int method, IconData icon, String label) {
     final cs = context.colorScheme;
     final selected = _reminderMethod == method;
     return Expanded(
@@ -781,16 +828,20 @@ class _ReminderScreenState extends State<ReminderScreen> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? cs.primary : cs.surfaceContainerHighest.withOpacity(0.5),
+            color: selected
+                ? cs.primary
+                : cs.surfaceContainerHighest.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: selected ? cs.primary : cs.outline.withOpacity(0.3),
+              color: selected ? cs.primary : cs.outline.withValues(alpha: 0.3),
             ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: selected ? cs.onPrimary : cs.onSurfaceVariant),
+              Icon(icon,
+                  size: 16,
+                  color: selected ? cs.onPrimary : cs.onSurfaceVariant),
               const SizedBox(width: 4),
               Text(
                 label,
@@ -811,7 +862,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
     final cs = context.colorScheme;
     final ts = context.textTheme;
 
-    final repeatText = _repeatTypeText(reminder.repeatType, reminder.repeatDays);
+    final repeatText =
+        _repeatTypeText(reminder.repeatType, reminder.repeatDays);
     final methodText = reminder.method == ReminderMethod.alarm ? '闹钟' : '日历';
     final timeStr =
         '${reminder.hour.toString().padLeft(2, '0')}:${reminder.minute.toString().padLeft(2, '0')}';
@@ -824,8 +876,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
           height: 44,
           decoration: BoxDecoration(
             color: reminder.enabled
-                ? cs.primary.withOpacity(0.1)
-                : cs.onSurface.withOpacity(0.05),
+                ? cs.primary.withValues(alpha: 0.1)
+                : cs.onSurface.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Center(
@@ -888,7 +940,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
       child: Center(
         child: Column(
           children: [
-            Icon(Icons.alarm_off, size: 48, color: cs.onSurfaceVariant.withOpacity(0.4)),
+            Icon(Icons.alarm_off,
+                size: 48, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
             const SizedBox(height: 12),
             Text(
               '暂无自定义提醒',
@@ -897,7 +950,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
             const SizedBox(height: 4),
             Text(
               '点击下方按钮添加',
-              style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant.withOpacity(0.7)),
+              style: ts.bodySmall
+                  ?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
             ),
           ],
         ),
@@ -1006,7 +1060,7 @@ class _ReminderEditorSheetState extends State<_ReminderEditorSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: cs.onSurfaceVariant.withOpacity(0.3),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1046,7 +1100,8 @@ class _ReminderEditorSheetState extends State<_ReminderEditorSheet> {
             const SizedBox(height: 8),
 
             // Repeat type
-            Text('重复', style: ts.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text('重复',
+                style: ts.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -1090,12 +1145,19 @@ class _ReminderEditorSheetState extends State<_ReminderEditorSheet> {
             const SizedBox(height: 16),
 
             // Method
-            Text('提醒方式', style: ts.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text('提醒方式',
+                style: ts.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             SegmentedButton<ReminderMethod>(
               segments: const [
-                ButtonSegment(value: ReminderMethod.alarm, label: Text('闹钟'), icon: Icon(Icons.alarm)),
-                ButtonSegment(value: ReminderMethod.calendar, label: Text('日历'), icon: Icon(Icons.calendar_today)),
+                ButtonSegment(
+                    value: ReminderMethod.alarm,
+                    label: Text('闹钟'),
+                    icon: Icon(Icons.alarm)),
+                ButtonSegment(
+                    value: ReminderMethod.calendar,
+                    label: Text('日历'),
+                    icon: Icon(Icons.calendar_today)),
               ],
               selected: {_method},
               onSelectionChanged: (s) => setState(() => _method = s.first),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -15,6 +14,8 @@ import '../services/html_parser.dart';
 import '../utils/constants.dart';
 import '../utils/extensions.dart';
 import '../services/database_service.dart';
+import '../services/schedule_import_service.dart';
+import '../services/backup_service.dart';
 import '../services/log_service.dart';
 import '../theme/app_theme.dart';
 import '../app.dart';
@@ -31,7 +32,6 @@ class MoreScreen extends StatefulWidget {
 class _MoreScreenState extends State<MoreScreen> {
   final DatabaseService _db = DatabaseService.instance;
   SaturdayMode _saturdayMode = SaturdayMode.off;
-  int _courseCount = 0;
   bool _isDarkMode = false;
   UserRole _userRole = UserRole.student;
   SchoolType _schoolType = SchoolType.highSchool;
@@ -51,19 +51,27 @@ class _MoreScreenState extends State<MoreScreen> {
   Future<void> _loadSettings() async {
     try {
       final satMode = await _db.getSetting('saturday_mode');
-      final count = await _db.courseCount;
       final roleStr = await _db.getSetting(AppConstants.keyUserRole);
       final schoolStr = await _db.getSetting(AppConstants.keySchoolType);
       final themeStr = await _db.getSetting(AppConstants.keyThemeColor);
       final devMode = await _db.getSetting('developer_mode');
       if (mounted) {
         setState(() {
-          _saturdayMode = SaturdayMode.values[int.tryParse(satMode ?? '0') ?? 0];
-          _courseCount = count;
+          final satIdx = int.tryParse(satMode ?? '') ?? 0;
+          final roleIdx = int.tryParse(roleStr ?? '') ?? 0;
+          final schoolIdx = int.tryParse(schoolStr ?? '') ?? 0;
+          _saturdayMode = (satIdx >= 0 && satIdx < SaturdayMode.values.length)
+              ? SaturdayMode.values[satIdx]
+              : SaturdayMode.off;
           _isDarkMode = context.isDarkMode;
-          _userRole = UserRole.values[int.tryParse(roleStr ?? '0') ?? 0];
-          _schoolType = SchoolType.values[int.tryParse(schoolStr ?? '0') ?? 0];
-          _themeColor = AppThemeColor.fromIndex(int.tryParse(themeStr ?? '0') ?? 0);
+          _userRole = (roleIdx >= 0 && roleIdx < UserRole.values.length)
+              ? UserRole.values[roleIdx]
+              : UserRole.student;
+          _schoolType = (schoolIdx >= 0 && schoolIdx < SchoolType.values.length)
+              ? SchoolType.values[schoolIdx]
+              : SchoolType.highSchool;
+          _themeColor =
+              AppThemeColor.fromIndex(int.tryParse(themeStr ?? '') ?? 0);
           _developerMode = devMode == '1';
         });
       }
@@ -141,9 +149,11 @@ class _MoreScreenState extends State<MoreScreen> {
 
   Future<void> _importFromFile() async {
     try {
+      // file_picker 在 Android 会把 allowedExtensions 转成 MIME，而系统
+      // MimeTypeMap 没有 json 映射，.json 会被过滤器丢弃、根本选不到。
+      // 改用 FileType.any，再按扩展名/内容自行判定格式。
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['html', 'json'],
+        type: FileType.any,
         withData: true,
       );
 
@@ -154,40 +164,89 @@ class _MoreScreenState extends State<MoreScreen> {
         if (mounted) context.showErrorSnackBar('无法读取文件');
         return;
       }
-      final content = utf8.decode(file.bytes!, allowMalformed: true);
+      String content = utf8.decode(file.bytes!, allowMalformed: true);
+      if (content.startsWith(String.fromCharCode(0xFEFF))) {
+        content = content.substring(1);
+      }
       if (content.trim().isEmpty) {
         if (mounted) context.showErrorSnackBar('文件内容为空');
         return;
       }
 
-      List<Course> courses;
-      if (file.name.endsWith('.json')) {
-        courses = _parseJsonCourses(content);
+      // 按扩展名（大小写不敏感）/内容首字符判定格式；未知扩展名按内容猜测。
+      final name = file.name.toLowerCase();
+      final trimmed = content.trimLeft();
+      final bool isJson;
+      if (name.endsWith('.json')) {
+        isJson = true;
+      } else if (name.endsWith('.html') || name.endsWith('.htm')) {
+        isJson = false;
       } else {
-        courses = _parseHtmlCourses(content);
+        isJson = trimmed.startsWith('[') ||
+            trimmed.startsWith('{') ||
+            trimmed.startsWith(String.fromCharCode(96));
       }
+      // 本 App 导出的「全量备份」：含课程 + 设置 + 提醒 + 作息，整体恢复。
+      if (isJson && BackupService.looksLikeFullBackup(content)) {
+        final count = BackupService.courseCountIn(content);
+        if (!mounted) return;
+        final restore = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('恢复完整备份'),
+            content: Text('这是一份完整备份（$count 个课程，含设置/提醒/作息时间）。'
+                '当前数据会被整体替换，并保存为可撤销记录。确定恢复？'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('确定恢复')),
+            ],
+          ),
+        );
+        if (restore == true) {
+          await BackupService.instance.importBackup(content);
+          await _loadSettings();
+          if (mounted) context.showSuccessSnackBar('已恢复完整备份（$count 个课程）');
+        }
+        return;
+      }
+
+      final List<Course> courses = isJson
+          ? ScheduleImportService.parseJson(content)
+          : _parseHtmlCourses(content);
 
       if (courses.isEmpty) {
         if (mounted) context.showErrorSnackBar('未找到课程数据');
         return;
       }
 
+      if (!mounted) return;
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('导入课表'),
-          content: Text('将导入 ${courses.length} 个课程，现有数据会被替换。确定继续？'),
+          content: Text(
+              '将导入 ${courses.length} 个课程，现有数据会被替换。导入前会自动创建备份，可在「撤销上次导入」恢复。确定继续？'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定导入')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('确定导入')),
           ],
         ),
       );
 
       if (confirm == true) {
-        await _db.importCourses(courses);
+        await BackupService.instance.importCourses(courses);
         await _loadSettings();
-        if (mounted) context.showSuccessSnackBar('成功导入 ${courses.length} 个课程');
+        if (mounted) {
+          context.showSuccessSnackBar('成功导入 ${courses.length} 个课程（已创建备份）');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -196,19 +255,13 @@ class _MoreScreenState extends State<MoreScreen> {
           builder: (ctx) => AlertDialog(
             title: const Text('导入失败'),
             content: SingleChildScrollView(child: Text('$e')),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定'))],
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: const Text('确定'))
+            ],
           ),
         );
       }
-    }
-  }
-
-  List<Course> _parseJsonCourses(String jsonStr) {
-    try {
-      final list = jsonDecode(jsonStr) as List;
-      return list.map((m) => Course.fromMap(m as Map<String, dynamic>)).toList();
-    } catch (e) {
-      throw Exception('JSON解析失败: $e');
     }
   }
 
@@ -220,7 +273,8 @@ class _MoreScreenState extends State<MoreScreen> {
         final hasSat = htmlStr.contains('SCHEDULE_SAT_CONFIG');
         String detail = '文件长度:${htmlStr.length} | MF:$hasMf | SAT:$hasSat';
         if (hasMf) {
-          final mfResult = HtmlScheduleParser.extractJsonDebug(htmlStr, 'SCHEDULE_MF');
+          final mfResult =
+              HtmlScheduleParser.extractJsonDebug(htmlStr, 'SCHEDULE_MF');
           detail += ' | MF解析:$mfResult';
         }
         throw Exception(detail);
@@ -233,15 +287,54 @@ class _MoreScreenState extends State<MoreScreen> {
 
   Future<void> _exportToFile() async {
     try {
-      final courses = await _db.exportCourses();
-      if (courses.isEmpty) {
-        if (mounted) context.showErrorSnackBar('没有课程数据可导出');
-        return;
-      }
-      final jsonStr = jsonEncode(courses.map((c) => c.toMap()).toList());
-      await Share.share(jsonStr, subject: '不忘课表 - 课表数据');
+      // 导出全量备份（课程 + 设置 + 提醒 + 作息时间）：既能完整还原，
+      // 也能当普通课程 JSON 导入（两个解析器都识别 courses 数组）。
+      final jsonStr = const JsonEncoder.withIndent('  ')
+          .convert(jsonDecode(await BackupService.instance.exportFull()));
+      final dir = await getTemporaryDirectory();
+      final fileName =
+          'buwang_schedule_${DateTime.now().millisecondsSinceEpoch}.json';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(jsonStr);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: '不忘课表 - 完整备份',
+      );
     } catch (e) {
       if (mounted) context.showErrorSnackBar('导出失败: $e');
+    }
+  }
+
+  Future<void> _undoLastImport() async {
+    final has = await BackupService.instance.hasBackup();
+    if (!has) {
+      if (mounted) context.showErrorSnackBar('没有可撤销的导入记录');
+      return;
+    }
+    if (!mounted) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('撤销上次导入'),
+        content: const Text('将用导入前的完整备份覆盖当前数据（课程/设置/提醒/作息）。确定撤销？'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确定撤销')),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      try {
+        await BackupService.instance.undoLastImport();
+        await _loadSettings();
+        if (mounted) context.showSuccessSnackBar('已撤销上次导入');
+      } catch (e) {
+        if (mounted) context.showErrorSnackBar('撤销失败: $e');
+      }
     }
   }
 
@@ -257,28 +350,40 @@ class _MoreScreenState extends State<MoreScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('方式一：直接导入HTML', style: theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text('方式一：直接导入HTML',
+                  style:
+                      theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
               const Text('如果你有教务系统生成的课表HTML网页文件，直接用「导入课表」选择该文件即可。'),
               const SizedBox(height: 16),
-              Text('方式二：用AI生成JSON', style: theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text('方式二：用AI生成JSON',
+                  style:
+                      theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              const Text('1. 打开你的课表（网页/APP/纸质拍照都行）\n2. 截图发给任意AI（豆包/Kimi/ChatGPT等）\n3. 发送以下提示词：'),
+              const Text(
+                  '1. 打开你的课表（网页/APP/纸质拍照都行）\n2. 截图发给任意AI（豆包/Kimi/ChatGPT等）\n3. 发送以下提示词：'),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8)),
                 child: SelectableText(
-                  '请把这张课表截图转成JSON数组，格式如下：\n[{"name":"班级名","subject":"科目","dayOfWeek":1,"period":2,"teacher":"老师名","color":0}]\n\n字段说明：\nname: 班级名（如高一1班）\nsubject: 科目名\ndayOfWeek: 1=周一..6=周六\nperiod: 节次（0=早自习,1=第1节..12=第12节）\nteacher: 老师姓名\ncolor: 0-9随便填\nlocation: 教室地点（可选）\n\n如果课表上有作息时间（每节课的上下课时间），请额外输出一个timeSlots数组：\n[{"period":0,"label":"早自习","start":"07:05","end":"07:45"},{"period":1,"label":"第1节","start":"08:25","end":"09:05"}]\n\n只输出JSON，不要其他内容。',
-                  style: theme.bodySmall?.copyWith(fontFamily: 'monospace', fontSize: 12),
+                  '请把这张课表截图转成JSON数组，格式如下：\n[{"name":"班级名","subject":"科目","dayOfWeek":1,"period":2,"teacher":"老师名","color":0}]\n\n字段说明：\nname: 班级名（如高一1班）\nsubject: 科目名\ndayOfWeek: 1=周一..6=周六\nperiod: 节次（0=早自习,1=第1节..12=第12节）\nteacher: 老师姓名\ncolor: 0-9随便填\nlocation: 教室地点（可选）\n\n只输出JSON数组，不要其他内容；也可以输出 {"courses":[...]} 对象。\n把内容保存为 .json 文件后用「导入课表」选择即可。\n注意：作息时间请在课表页点击左上角节次表头编辑，会自动保存并同步到提醒。',
+                  style: theme.bodySmall
+                      ?.copyWith(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('4. 复制AI返回的JSON\n5. 保存为.json文件发到手机\n6. 回到本App用「导入课表」选择该文件'),
+              const Text(
+                  '4. 复制AI返回的JSON\n5. 保存为.json文件发到手机\n6. 回到本App用「导入课表」选择该文件'),
             ],
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('知道了'))
+        ],
       ),
     );
   }
@@ -292,15 +397,19 @@ class _MoreScreenState extends State<MoreScreen> {
         title: Row(
           children: [
             Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(10)),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                  color: cs.primary, borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.school, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(AppConstants.appName, style: theme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text(AppConstants.appName,
+                    style: theme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
                 Text('v${AppConstants.appVersion}', style: theme.bodySmall),
               ],
             ),
@@ -313,7 +422,9 @@ class _MoreScreenState extends State<MoreScreen> {
             children: [
               const Text('不忘课表是一款简洁高效的课程管理工具，帮助你轻松管理每日课程安排、设置上课提醒，再也不用担心忘课。'),
               const SizedBox(height: 16),
-              Text('功能特色', style: theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text('功能特色',
+                  style:
+                      theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               const Text('• 课表导入与管理（HTML/JSON）'),
               const Text('• 上课提醒（闹钟/日历/通知）'),
@@ -322,13 +433,18 @@ class _MoreScreenState extends State<MoreScreen> {
               const Text('• 高中/大学模式支持'),
               const Text('• 深色模式 + 三套主题色'),
               const SizedBox(height: 8),
-              Text('联系方式', style: theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text('联系方式',
+                  style:
+                      theme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               const Text('SNO · dxzaaa@yeah.net'),
             ],
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('确定'))
+        ],
       ),
     );
   }
@@ -340,7 +456,8 @@ class _MoreScreenState extends State<MoreScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('💖 支持开发者', style: theme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+        title: Text('💖 支持开发者',
+            style: theme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -356,17 +473,23 @@ class _MoreScreenState extends State<MoreScreen> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.asset('assets/images/wechat_qr.jpg', width: 200, height: 200, fit: BoxFit.cover),
+                    child: Image.asset('assets/images/wechat_qr.jpg',
+                        width: 200, height: 200, fit: BoxFit.cover),
                   ),
                   Positioned(
-                    bottom: 0, left: 0, right: 0,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: Colors.black54,
-                        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
+                        borderRadius: BorderRadius.only(
+                            bottomLeft: Radius.circular(12),
+                            bottomRight: Radius.circular(12)),
                       ),
-                      child: const Text('长按保存到本地', textAlign: TextAlign.center,
+                      child: const Text('长按保存到本地',
+                          textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white, fontSize: 12)),
                     ),
                   ),
@@ -379,7 +502,7 @@ class _MoreScreenState extends State<MoreScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cs.primaryContainer.withOpacity(0.3),
+                color: cs.primaryContainer.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -388,15 +511,20 @@ class _MoreScreenState extends State<MoreScreen> {
                     children: [
                       Icon(Icons.code, size: 18, color: cs.primary),
                       const SizedBox(width: 8),
-                      Expanded(child: Text('承接小程序、App、Web系统、数据看板等软件定制开发', style: theme.bodySmall)),
+                      Expanded(
+                          child: Text('承接小程序、App、Web系统、数据看板等软件定制开发',
+                              style: theme.bodySmall)),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.email_outlined, size: 16, color: cs.onSurfaceVariant),
+                      Icon(Icons.email_outlined,
+                          size: 16, color: cs.onSurfaceVariant),
                       const SizedBox(width: 8),
-                      Text('dxzaaa@yeah.net', style: theme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      Text('dxzaaa@yeah.net',
+                          style: theme.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant)),
                     ],
                   ),
                 ],
@@ -404,7 +532,10 @@ class _MoreScreenState extends State<MoreScreen> {
             ),
           ],
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))
+        ],
       ),
     );
   }
@@ -416,7 +547,8 @@ class _MoreScreenState extends State<MoreScreen> {
     _isDarkMode = context.isDarkMode;
 
     return Scaffold(
-      appBar: AppBar(title: Text('更多', style: ts.titleLarge?.copyWith(fontSize: 18))),
+      appBar: AppBar(
+          title: Text('更多', style: ts.titleLarge?.copyWith(fontSize: 18))),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
@@ -426,11 +558,17 @@ class _MoreScreenState extends State<MoreScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Column(
               children: [
-                _buildTile(context, Icons.upload_file, cs.primary, '导入课表', '从 HTML 或 JSON 文件导入', _importFromFile),
+                _buildTile(context, Icons.upload_file, cs.primary, '导入课表',
+                    '从 HTML 或 JSON 文件导入', _importFromFile),
                 const Divider(height: 1, indent: 72),
-                _buildTile(context, Icons.download, cs.secondary, '导出课表', '当前已有 $_courseCount 个课程', _exportToFile),
+                _buildTile(context, Icons.download, cs.secondary, '导出课表',
+                    '导出完整备份 .json（含设置/提醒）', _exportToFile),
                 const Divider(height: 1, indent: 72),
-                _buildTile(context, Icons.help_outline, cs.tertiary, '导入帮助', '不会导入？用AI截图生成JSON', _showImportHelp),
+                _buildTile(context, Icons.undo, cs.error, '撤销上次导入',
+                    '用导入前的备份恢复全部数据', _undoLastImport),
+                const Divider(height: 1, indent: 72),
+                _buildTile(context, Icons.help_outline, cs.tertiary, '导入帮助',
+                    '不会导入？用AI截图生成JSON', _showImportHelp),
               ],
             ),
           ),
@@ -446,24 +584,35 @@ class _MoreScreenState extends State<MoreScreen> {
                 ListTile(
                   leading: _iconBox(cs.tertiary, Icons.weekend),
                   title: const Text('周六模式'),
-                  subtitle: Text(_saturdayModeLabel, style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  subtitle: Text(_saturdayModeLabel,
+                      style:
+                          ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                   trailing: PopupMenuButton<SaturdayMode>(
                     icon: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
                     onSelected: _setSaturdayMode,
                     itemBuilder: (_) => const [
-                      PopupMenuItem(value: SaturdayMode.off, child: Text('关闭 (隐藏周六)')),
-                      PopupMenuItem(value: SaturdayMode.round1, child: Text('轮次 1')),
-                      PopupMenuItem(value: SaturdayMode.round2, child: Text('轮次 2')),
-                      PopupMenuItem(value: SaturdayMode.round3, child: Text('轮次 3')),
+                      PopupMenuItem(
+                          value: SaturdayMode.off, child: Text('关闭 (隐藏周六)')),
+                      PopupMenuItem(
+                          value: SaturdayMode.round1, child: Text('轮次 1')),
+                      PopupMenuItem(
+                          value: SaturdayMode.round2, child: Text('轮次 2')),
+                      PopupMenuItem(
+                          value: SaturdayMode.round3, child: Text('轮次 3')),
                     ],
                   ),
                 ),
                 const Divider(height: 1, indent: 72),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
-                      _iconBox(cs.primary, _userRole == UserRole.student ? Icons.person : Icons.school),
+                      _iconBox(
+                          cs.primary,
+                          _userRole == UserRole.student
+                              ? Icons.person
+                              : Icons.school),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -473,12 +622,21 @@ class _MoreScreenState extends State<MoreScreen> {
                             const SizedBox(height: 4),
                             SegmentedButton<UserRole>(
                               segments: const [
-                                ButtonSegment(value: UserRole.student, label: Text('学生'), icon: Icon(Icons.person, size: 16)),
-                                ButtonSegment(value: UserRole.teacher, label: Text('教师'), icon: Icon(Icons.school, size: 16)),
+                                ButtonSegment(
+                                    value: UserRole.student,
+                                    label: Text('学生'),
+                                    icon: Icon(Icons.person, size: 16)),
+                                ButtonSegment(
+                                    value: UserRole.teacher,
+                                    label: Text('教师'),
+                                    icon: Icon(Icons.school, size: 16)),
                               ],
                               selected: {_userRole},
                               onSelectionChanged: (s) => _setUserRole(s.first),
-                              style: ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                              style: const ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap),
                             ),
                           ],
                         ),
@@ -488,10 +646,15 @@ class _MoreScreenState extends State<MoreScreen> {
                 ),
                 const Divider(height: 1, indent: 72),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
-                      _iconBox(cs.tertiary, _schoolType == SchoolType.highSchool ? Icons.class_ : Icons.account_balance),
+                      _iconBox(
+                          cs.tertiary,
+                          _schoolType == SchoolType.highSchool
+                              ? Icons.class_
+                              : Icons.account_balance),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -501,12 +664,23 @@ class _MoreScreenState extends State<MoreScreen> {
                             const SizedBox(height: 4),
                             SegmentedButton<SchoolType>(
                               segments: const [
-                                ButtonSegment(value: SchoolType.highSchool, label: Text('高中'), icon: Icon(Icons.class_, size: 16)),
-                                ButtonSegment(value: SchoolType.university, label: Text('大学'), icon: Icon(Icons.account_balance, size: 16)),
+                                ButtonSegment(
+                                    value: SchoolType.highSchool,
+                                    label: Text('高中'),
+                                    icon: Icon(Icons.class_, size: 16)),
+                                ButtonSegment(
+                                    value: SchoolType.university,
+                                    label: Text('大学'),
+                                    icon:
+                                        Icon(Icons.account_balance, size: 16)),
                               ],
                               selected: {_schoolType},
-                              onSelectionChanged: (s) => _setSchoolType(s.first),
-                              style: ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                              onSelectionChanged: (s) =>
+                                  _setSchoolType(s.first),
+                              style: const ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap),
                             ),
                           ],
                         ),
@@ -516,13 +690,17 @@ class _MoreScreenState extends State<MoreScreen> {
                 ),
                 const Divider(height: 1, indent: 72),
                 ListTile(
-                  leading: _iconBox(cs.primary, _isDarkMode ? Icons.dark_mode : Icons.light_mode),
+                  leading: _iconBox(cs.primary,
+                      _isDarkMode ? Icons.dark_mode : Icons.light_mode),
                   title: const Text('深色模式'),
-                  subtitle: Text(_isDarkMode ? '跟随系统 (深色)' : '跟随系统 (浅色)', style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  subtitle: Text(_isDarkMode ? '跟随系统 (深色)' : '跟随系统 (浅色)',
+                      style:
+                          ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 ),
                 const Divider(height: 1, indent: 72),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
                       _iconBox(cs.primary, Icons.palette_outlined),
@@ -541,15 +719,31 @@ class _MoreScreenState extends State<MoreScreen> {
                                   child: GestureDetector(
                                     onTap: () => _setThemeColor(color),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
-                                      width: 36, height: 36,
+                                      duration:
+                                          const Duration(milliseconds: 200),
+                                      width: 36,
+                                      height: 36,
                                       decoration: BoxDecoration(
                                         color: color.seedColor,
                                         shape: BoxShape.circle,
-                                        border: selected ? Border.all(color: cs.onSurface, width: 3) : null,
-                                        boxShadow: selected ? [BoxShadow(color: color.seedColor.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 2))] : null,
+                                        border: selected
+                                            ? Border.all(
+                                                color: cs.onSurface, width: 3)
+                                            : null,
+                                        boxShadow: selected
+                                            ? [
+                                                BoxShadow(
+                                                    color: color.seedColor
+                                                        .withValues(alpha: 0.4),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 2))
+                                              ]
+                                            : null,
                                       ),
-                                      child: selected ? const Icon(Icons.check, color: Colors.white, size: 18) : null,
+                                      child: selected
+                                          ? const Icon(Icons.check,
+                                              color: Colors.white, size: 18)
+                                          : null,
                                     ),
                                   ),
                                 );
@@ -573,11 +767,16 @@ class _MoreScreenState extends State<MoreScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Column(
                 children: [
-                  _buildTile(context, Icons.bug_report, cs.error, '导出调试日志', '将日志分享到微信/QQ', () => LogService.instance.exportLog()),
+                  _buildTile(context, Icons.bug_report, cs.error, '导出调试日志',
+                      '将日志分享到微信/QQ', () => LogService.instance.exportLog()),
                   const Divider(height: 1, indent: 72),
-                  _buildTile(context, Icons.delete_sweep, cs.error, '清空调试日志', null, () async {
+                  _buildTile(
+                      context, Icons.delete_sweep, cs.error, '清空调试日志', null,
+                      () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     await LogService.instance.clear();
-                    if (mounted) context.showSnackBar('日志已清空');
+                    messenger
+                        .showSnackBar(const SnackBar(content: Text('日志已清空')));
                   }),
                 ],
               ),
@@ -592,8 +791,13 @@ class _MoreScreenState extends State<MoreScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Column(
               children: [
-                _buildTile(context, Icons.info_outline, cs.primary, '关于不忘课表',
-                    '版本 ${AppConstants.appVersion}${_developerMode ? ' 🔧' : ''}', _showAbout),
+                _buildTile(
+                    context,
+                    Icons.info_outline,
+                    cs.primary,
+                    '关于不忘课表',
+                    '版本 ${AppConstants.appVersion}${_developerMode ? ' 🔧' : ''}',
+                    _showAbout),
                 const Divider(height: 1, indent: 72),
                 _buildTile(context, Icons.favorite, cs.secondary, '支持开发者',
                     '请开发者喝杯咖啡 ☕', _showSupportDialog),
@@ -610,17 +814,31 @@ class _MoreScreenState extends State<MoreScreen> {
               child: Column(
                 children: [
                   Container(
-                    width: 72, height: 72,
+                    width: 72,
+                    height: 72,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [cs.primary, cs.tertiary], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      gradient: LinearGradient(
+                          colors: [cs.primary, cs.tertiary],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight),
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: cs.primary.withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 4))],
+                      boxShadow: [
+                        BoxShadow(
+                            color: cs.primary.withValues(alpha: 0.3),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4))
+                      ],
                     ),
-                    child: const Icon(Icons.school, color: Colors.white, size: 40),
+                    child:
+                        const Icon(Icons.school, color: Colors.white, size: 40),
                   ),
                   const SizedBox(height: 12),
-                  Text(AppConstants.appName, style: ts.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  Text('v${AppConstants.appVersion}', style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  Text(AppConstants.appName,
+                      style: ts.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold)),
+                  Text('v${AppConstants.appVersion}',
+                      style:
+                          ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -633,19 +851,26 @@ class _MoreScreenState extends State<MoreScreen> {
 
   Widget _iconBox(Color color, IconData icon) {
     return Container(
-      width: 40, height: 40,
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10)),
       child: Icon(icon, color: color, size: 22),
     );
   }
 
-  Widget _buildTile(BuildContext context, IconData icon, Color iconColor, String title, String? subtitle, VoidCallback onTap) {
+  Widget _buildTile(BuildContext context, IconData icon, Color iconColor,
+      String title, String? subtitle, VoidCallback onTap) {
     final cs = context.colorScheme;
     final ts = context.textTheme;
     return ListTile(
       leading: _iconBox(iconColor, icon),
       title: Text(title),
-      subtitle: subtitle != null ? Text(subtitle, style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant)) : null,
+      subtitle: subtitle != null
+          ? Text(subtitle,
+              style: ts.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+          : null,
       trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
       onTap: onTap,
     );
@@ -653,14 +878,19 @@ class _MoreScreenState extends State<MoreScreen> {
 
   String get _saturdayModeLabel {
     switch (_saturdayMode) {
-      case SaturdayMode.off: return '关闭 (隐藏周六列)';
-      case SaturdayMode.round1: return '轮次 1';
-      case SaturdayMode.round2: return '轮次 2';
-      case SaturdayMode.round3: return '轮次 3';
+      case SaturdayMode.off:
+        return '关闭 (隐藏周六列)';
+      case SaturdayMode.round1:
+        return '轮次 1';
+      case SaturdayMode.round2:
+        return '轮次 2';
+      case SaturdayMode.round3:
+        return '轮次 3';
     }
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
+  Widget _buildSectionHeader(
+      BuildContext context, String title, IconData icon) {
     final cs = context.colorScheme;
     final ts = context.textTheme;
     return Padding(
@@ -669,7 +899,9 @@ class _MoreScreenState extends State<MoreScreen> {
         children: [
           Icon(icon, size: 20, color: cs.primary),
           const SizedBox(width: 8),
-          Text(title, style: ts.titleSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+          Text(title,
+              style: ts.titleSmall
+                  ?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
         ],
       ),
     );

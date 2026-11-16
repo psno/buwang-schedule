@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_mode.dart';
+import '../services/time_slot_service.dart';
 
 /// 不忘课表 - App Constants
 class AppConstants {
@@ -8,7 +9,7 @@ class AppConstants {
 
   // ─── App Info ───
   static const String appName = '不忘课表';
-  static const String appVersion = '1.4.5';
+  static const String appVersion = '1.4.6';
 
   // ─── Storage Keys ───
   static const String keyThemeMode = 'theme_mode';
@@ -271,36 +272,66 @@ const List<TimeSlot> universityTimeSlots = [
     endTime: TimeOfDay(hour: 20, minute: 40),
     label: '第10节',
   ),
+  TimeSlot(
+    period: 10,
+    startTime: TimeOfDay(hour: 20, minute: 50),
+    endTime: TimeOfDay(hour: 21, minute: 35),
+    label: '第11节',
+  ),
+  TimeSlot(
+    period: 11,
+    startTime: TimeOfDay(hour: 21, minute: 45),
+    endTime: TimeOfDay(hour: 22, minute: 30),
+    label: '第12节',
+  ),
+  TimeSlot(
+    period: 12,
+    startTime: TimeOfDay(hour: 22, minute: 40),
+    endTime: TimeOfDay(hour: 23, minute: 25),
+    label: '第13节',
+  ),
 ];
 
-/// Get default time slots based on school type.
-List<TimeSlot> getDefaultTimeSlots(SchoolType type) {
-  switch (type) {
-    case SchoolType.highSchool:
-      return defaultTimeSlots;
-    case SchoolType.university:
-      return universityTimeSlots;
-  }
-}
+/// 当前生效的作息时间（含用户在课表页保存的自定义时间）。
+/// 读取 / 持久化逻辑放在 services/time_slot_service.dart；这里保持同步签名，
+/// 供 getTimeSlot 与作息编辑器直接调用。
+List<TimeSlot> getDefaultTimeSlots(SchoolType type) =>
+    TimeSlotService.instance.getSlots(type);
 
 /// Get the time slot for a given period and day.
-/// Returns Saturday afternoon variant when [dayOfWeek] == 6 (Saturday) and period is 5-8.
-TimeSlot getTimeSlot(int period, {int dayOfWeek = 1, SchoolType schoolType = SchoolType.highSchool}) {
+/// Returns Saturday afternoon variant when [dayOfWeek] == 6 (Saturday) and
+/// period is 5-8, but only while the high-school defaults are in effect:
+/// once the user has customised the timetable, their times win on every day.
+TimeSlot getTimeSlot(int period,
+    {int dayOfWeek = 1, SchoolType schoolType = SchoolType.highSchool}) {
   final slots = getDefaultTimeSlots(schoolType);
 
-  if (schoolType == SchoolType.highSchool) {
-    if (dayOfWeek == 6 && period >= 5 && period <= 8) {
-      return saturdayAfternoonTimeSlots.firstWhere(
-        (s) => s.period == period,
-        orElse: () => slots.firstWhere((s) => s.period == period),
-      );
-    }
+  if (schoolType == SchoolType.highSchool &&
+      dayOfWeek == 6 &&
+      period >= 5 &&
+      period <= 8 &&
+      !TimeSlotService.instance.hasCustom(SchoolType.highSchool)) {
+    return saturdayAfternoonTimeSlots.firstWhere(
+      (s) => s.period == period,
+      orElse: () => _slotOrLast(slots, period),
+    );
   }
 
-  return slots.firstWhere(
-    (s) => s.period == period,
-    orElse: () => slots.first,
-  );
+  return _slotOrLast(slots, period);
+}
+
+/// 越界节次回退到「最后一节」而非「早自习」：早自习会让晚上的课在首页 /
+/// 提醒里显示成清晨，误导性更强。空列表保底避免 RangeError。
+TimeSlot _slotOrLast(List<TimeSlot> slots, int period) {
+  if (slots.isEmpty) {
+    return const TimeSlot(
+      period: 0,
+      startTime: TimeOfDay(hour: 8, minute: 0),
+      endTime: TimeOfDay(hour: 8, minute: 45),
+      label: '第1节',
+    );
+  }
+  return slots.firstWhere((s) => s.period == period, orElse: () => slots.last);
 }
 
 /// Day names in Chinese (index 0 = Monday, 6 = Sunday)
@@ -406,9 +437,10 @@ Color getCourseColor(int index, {bool isDark = false}) {
 }
 
 /// Get a semi-transparent version of a course color for backgrounds
-Color getCourseColorBackground(int index, {bool isDark = false, double opacity = 0.12}) {
+Color getCourseColorBackground(int index,
+    {bool isDark = false, double opacity = 0.12}) {
   final color = getCourseColor(index, isDark: isDark);
-  return color.withOpacity(opacity);
+  return color.withValues(alpha: opacity);
 }
 
 /// Section names for a typical schedule

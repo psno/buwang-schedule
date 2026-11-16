@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>邓旭洲 老师 · 课表</title>
+<style>
+  :root {
+    --bg-body:#f2f4f8; --bg-card:#ffffff; --text-main:#101828; --text-sub:#667085;
+    --accent:#2563eb; --accent-2:#7c3aed; --accent-bg:rgba(37,99,235,.08);
+    --ok:#16a34a; --ok-bg:rgba(22,163,74,.14);
+    --next:#f59e0b; --next-bg:rgba(245,158,11,.12);
+    --border:#e6eaf2; --sat:#ea8a00; --sat-bg:rgba(234,138,0,.07);
+    --shadow:0 6px 20px rgba(16,24,40,.07);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-body:#0b0f19; --bg-card:#151a25; --text-main:#f2f4f8; --text-sub:#98a2b3;
+      --accent:#3b82f6; --accent-bg:rgba(59,130,246,.16); --ok:#22c55e;
+      --ok-bg:rgba(34,197,94,.16); --next:#fbbf24; --next-bg:rgba(251,191,36,.14);
+      --border:#253044; --sat:#f59e0b; --sat-bg:rgba(245,158,11,.12);
+      --shadow:0 8px 24px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg-body); color:var(--text-main);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+         padding-bottom:28px; }
+
+  header { position:sticky; top:0; z-index:50; background:color-mix(in srgb,var(--bg-card) 88%,transparent);
+           backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); border-bottom:1px solid var(--border); }
+  .hwrap { max-width:1080px; margin:0 auto; padding:12px 16px; display:flex; align-items:center;
+           justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:8px; }
+  .brand .logo { width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+                 background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; font-size:15px; }
+  .brand h1 { margin:0; font-size:17px; font-weight:700; letter-spacing:.2px; }
+  .brand small { display:block; font-size:11px; color:var(--text-sub); font-weight:400; }
+
+  .cfg { display:flex; align-items:center; gap:8px; background:var(--bg-body); border:1px solid var(--border);
+         padding:5px 10px; border-radius:999px; font-size:13px; }
+  .cfg label { color:var(--text-sub); font-size:12px; }
+  .cfg select { border:0; background:transparent; color:var(--sat); font-weight:700; font-size:13px; outline:none; }
+
+  .status { max-width:1080px; margin:14px auto 0; padding:0 16px; }
+  .card { background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; border-radius:16px;
+          padding:16px 18px; box-shadow:0 10px 24px rgba(37,99,235,.22); display:flex; flex-direction:column; gap:6px; }
+  .clock { font-size:13px; opacity:.92; }
+  .countdown { font-size:24px; font-weight:800; letter-spacing:.5px; }
+  .hint { font-size:13px; opacity:.92; }
+
+  .wrap { max-width:1080px; margin:16px auto 0; padding:0 16px; overflow-x:auto; }
+  table { width:100%; border-collapse:separate; border-spacing:0; background:var(--bg-card);
+          border-radius:14px; box-shadow:var(--shadow); min-width:760px; overflow:hidden; }
+  th,td { padding:8px 6px; text-align:center; border-bottom:1px solid var(--border);
+          border-right:1px solid var(--border); font-size:13px; }
+  tr:last-child td { border-bottom:0; }
+  th:last-child, td:last-child { border-right:0; }
+  thead th { background:var(--bg-body); color:var(--text-sub); font-weight:600; font-size:12px; }
+  th:first-child, td:first-child { position:sticky; left:0; z-index:5; background:var(--bg-card);
+          font-weight:700; width:92px; min-width:92px; text-align:left; padding-left:10px; }
+  thead th:first-child { background:var(--bg-body); z-index:6; }
+  .pt { display:block; font-size:10px; color:var(--text-sub); font-weight:400; margin-top:1px; }
+  .pt.sat-time { color:#b45309; }
+  .cell { display:flex; flex-direction:column; gap:2px; line-height:1.25; }
+  .cell .t { font-weight:700; font-size:13px; }
+  .cell .s { font-size:11px; color:var(--text-sub); }
+  .cell.empty::after { content:"—"; color:var(--border); }
+
+  td.today { background:var(--accent-bg); }
+  th.today { color:var(--accent); }
+  td.sat { background:var(--sat-bg); }
+  th.sat { color:var(--sat); }
+  td.current { background:var(--ok-bg) !important; position:relative; }
+  td.current::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--ok); }
+  td.next { background:var(--next-bg) !important; }
+
+  footer { max-width:1080px; margin:18px auto 0; padding:0 16px; text-align:center;
+           color:var(--text-sub); font-size:11.5px; line-height:1.9; }
+
+  @media print {
+    @page { size:A4 landscape; margin:8mm; }
+    body { background:#fff; padding:0; }
+    header, .status, footer { display:none !important; }
+    .wrap { max-width:none; margin:0; padding:0; overflow:visible; }
+    table { box-shadow:none; border:1px solid #ddd; min-width:0; }
+    th,td { border-color:#ddd !important; }
+    td.today, td.sat, td.current, td.next { background:#fff !important; }
+    .cell .s { color:#555; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hwrap">
+    <div class="brand">
+      <div class="logo">🎓</div>
+      <div>
+        <h1>邓旭洲 老师 · 课表</h1>
+        <small>任教 数学</small>
+      </div>
+    </div>
+    <div class="cfg" id="cfgBox">
+      <label>周六</label>
+      <select id="satSel">
+        <option value="0">双休</option>
+        <option value="1">第1轮</option>
+        <option value="2">第2轮</option>
+        <option value="3">第3轮</option>
+      </select>
+    </div>
+  </div>
+</header>
+
+<div class="status">
+  <div class="card">
+    <div class="clock" id="clock">正在初始化…</div>
+    <div class="countdown" id="countdown">--</div>
+    <div class="hint" id="hint">由教务系统自动生成</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>节次 / 时间</th>
+        <th data-d="1">周一</th><th data-d="2">周二</th><th data-d="3">周三</th>
+        <th data-d="4">周四</th><th data-d="5">周五</th>
+        <th data-d="6" class="sat">周六</th>
+        <th data-d="7" class="sat">周日</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<footer>
+  本课表由教务系统自动生成，如与教务处安排不一致，以教务处通知为准。<br>
+  生成时间：2026-11-14 11:55 · 达州兰桥中学教务管理系统
+</footer>
+
+<script>
+const DATA = {"periods": [{"i": 0, "name": "早读", "s": "06:50", "e": "07:20"}, {"i": 1, "name": "第一节", "s": "08:10", "e": "08:50"}, {"i": 2, "name": "第二节", "s": "09:05", "e": "09:45"}, {"i": 3, "name": "第三节", "s": "10:15", "e": "10:55"}, {"i": 4, "name": "第四节", "s": "11:10", "e": "11:50"}, {"i": 5, "name": "第五节", "s": "13:50", "e": "14:30"}, {"i": 6, "name": "第六节", "s": "14:45", "e": "15:25"}, {"i": 7, "name": "第七节", "s": "15:40", "e": "16:20"}, {"i": 8, "name": "第八节", "s": "16:35", "e": "17:15"}, {"i": 9, "name": "晚辅一", "s": "18:10", "e": "18:50"}, {"i": 10, "name": "晚辅二", "s": "19:00", "e": "19:40"}, {"i": 11, "name": "晚辅三", "s": "19:50", "e": "20:30"}, {"i": 12, "name": "晚辅四", "s": "20:40", "e": "21:20"}], "satPeriods": [{"i": 0, "name": "早读", "s": "06:50", "e": "07:20"}, {"i": 1, "name": "第一节", "s": "08:10", "e": "08:50"}, {"i": 2, "name": "第二节", "s": "09:00", "e": "09:40"}, {"i": 3, "name": "第三节", "s": "09:50", "e": "10:30"}, {"i": 4, "name": "第四节", "s": "10:40", "e": "11:20"}, {"i": 5, "name": "第五节", "s": "13:00", "e": "13:40"}, {"i": 6, "name": "第六节", "s": "13:50", "e": "14:30"}, {"i": 7, "name": "第七节", "s": "14:40", "e": "15:20"}, {"i": 8, "name": "第八节", "s": "15:30", "e": "16:10"}], "mf": {"1": {"3": {"t": "数学", "s": "高2026级2班"}, "4": {"t": "数学", "s": "高2026级5班"}, "10": {"t": "数学", "s": "高2026级2班"}, "9": {"t": "数学", "s": "高2026级5班"}}, "2": {"3": {"t": "数学", "s": "高2026级2班"}, "2": {"t": "数学", "s": "高2026级5班"}, "11": {"t": "数学", "s": "高2026级2班"}, "9": {"t": "数学", "s": "高2026级5班"}, "12": {"t": "数学", "s": "高2026级5班"}}, "3": {"4": {"t": "数学", "s": "高2026级2班"}, "6": {"t": "数学", "s": "高2026级2班"}, "3": {"t": "数学", "s": "高2026级5班"}, "7": {"t": "数学", "s": "高2026级5班"}, "10": {"t": "数学", "s": "高2026级2班"}, "11": {"t": "数学", "s": "高2026级2班"}}, "4": {"2": {"t": "数学", "s": "高2026级2班"}, "8": {"t": "数学", "s": "高2026级2班"}, "3": {"t": "数学", "s": "高2026级5班"}, "7": {"t": "数学", "s": "高2026级5班"}, "9": {"t": "数学", "s": "高2026级2班"}}, "5": {"2": {"t": "数学", "s": "高2026级2班"}, "7": {"t": "数学", "s": "高2026级2班"}, "3": {"t": "数学", "s": "高2026级5班"}, "6": {"t": "数学", "s": "高2026级5班"}, "10": {"t": "数学", "s": "高2026级5班"}, "11": {"t": "数学", "s": "高2026级5班"}}}, "sat": {"1": {"3": {"t": "数学", "s": "高2026级2班"}, "4": {"t": "数学", "s": "高2026级2班"}, "5": {"t": "数学", "s": "高2026级5班"}}, "2": {"5": {"t": "数学", "s": "高2026级2班"}, "6": {"t": "数学", "s": "高2026级2班"}, "4": {"t": "数学", "s": "高2026级5班"}, "8": {"t": "数学", "s": "高2026级5班"}}, "3": {"2": {"t": "数学", "s": "高2026级2班"}, "3": {"t": "数学", "s": "高2026级5班"}, "7": {"t": "数学", "s": "高2026级5班"}}}, "sun": {}, "has_sat": true, "default_sat": "2"};
+const PERIODS = DATA.periods;
+const SATP = {};
+(DATA.satPeriods || []).forEach(p => { SATP[p.i] = p; });
+const MF = DATA.mf;
+const SAT = DATA.sat;
+const SUN = DATA.sun;
+
+const satSel = document.getElementById('satSel');
+let satMode = localStorage.getItem('t63_sat') || DATA.default_sat || '0';
+satSel.value = satMode;
+satSel.addEventListener('change', () => {
+  satMode = satSel.value;
+  localStorage.setItem('t63_sat', satMode);
+  render();
+  tick();
+});
+
+const pad = n => (n < 10 ? '0' + n : '' + n);
+const toDate = (base, hm) => {
+  if (!hm) return null;
+  const [h, m] = hm.split(':').map(Number);
+  const d = new Date(base); d.setHours(h, m, 0, 0); return d;
+};
+const pname = (i, list) => { const L = list || PERIODS; return L[i] ? L[i].name : ('第' + i + '节'); };
+
+function cell(day, p) {
+  if (day >= 1 && day <= 5) return (MF[day] || {})[p] || null;
+  if (day === 6) return satMode === '0' ? null : ((SAT[satMode] || {})[p] || null);
+  if (day === 7) return SUN[p] || null;
+  return null;
+}
+
+function render() {
+  const tb = document.getElementById('tbody');
+  tb.innerHTML = '';
+  PERIODS.forEach(p => {
+    const tr = document.createElement('tr');
+    const sp = SATP[p.i];
+    let timeHtml = '<span class="pt">' + (p.s || '') + (p.e ? '–' + p.e : '') + '</span>';
+    if (sp && (sp.s !== p.s || sp.e !== p.e || sp.name !== p.name)) {
+      timeHtml += '<span class="pt sat-time">周六' + (sp.name !== p.name ? ' ' + sp.name : '') +
+                  ' ' + (sp.s || '') + (sp.e ? '–' + sp.e : '') + '</span>';
+    }
+    tr.innerHTML = '<td>' + p.name + timeHtml + '</td>';
+    [1,2,3,4,5,6,7].forEach(d => {
+      const c = cell(d, p.i);
+      const td = document.createElement('td');
+      td.dataset.day = d; td.dataset.period = p.i;
+      if (d === 6 && satMode !== '0') td.classList.add('sat');
+      if (c) {
+        td.innerHTML = '<div class="cell"><span class="t">' + c.t + '</span><span class="s">' + c.s + '</span></div>';
+      } else {
+        td.innerHTML = '<div class="cell empty"></div>';
+      }
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  if (DATA.has_sat) document.getElementById('cfgBox').style.display = '';
+  else document.getElementById('cfgBox').style.display = 'none';
+}
+
+function tick() {
+  const now = new Date();
+  const jsDay = now.getDay();
+  const day = jsDay === 0 ? 7 : jsDay;
+  const names = ['', '周一','周二','周三','周四','周五','周六','周日'];
+
+  document.getElementById('clock').innerText =
+    now.getFullYear() + '年' + (now.getMonth()+1) + '月' + now.getDate() + '日 ' +
+    (names[day] || '') + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+
+  document.querySelectorAll('td.today, td.current, td.next, th.today')
+    .forEach(el => el.classList.remove('today', 'current', 'next'));
+
+  if (day >= 1 && day <= 5) {
+    document.querySelectorAll('td[data-day="' + day + '"]').forEach(el => el.classList.add('today'));
+    const th = document.querySelector('th[data-d="' + day + '"]');
+    if (th) th.classList.add('today');
+  } else if (day === 6 && satMode !== '0') {
+    document.querySelectorAll('td[data-day="6"]').forEach(el => el.classList.add('today'));
+  } else if (day === 7) {
+    document.querySelectorAll('td[data-day="7"]').forEach(el => el.classList.add('today'));
+  }
+
+  const cd = document.getElementById('countdown');
+  const hint = document.getElementById('hint');
+
+  if (day === 7) {
+    cd.innerText = '周日 · 晚自习';
+  } else if (day === 6 && satMode === '0') {
+    cd.innerText = '今日双休';
+    hint.innerText = '好好休息！';
+    return;
+  }
+
+  let cur = null, nxt = null;
+  const usePeriods = (day === 6 && satMode !== '0') ? (DATA.satPeriods || PERIODS) : PERIODS;
+  for (const p of usePeriods) {
+    const c = cell(day, p.i);
+    if (!c) continue;
+    const st = toDate(now, p.s), en = toDate(now, p.e);
+    if (!st || !en) continue;
+    if (now >= st && now < en) cur = { p: p.i, end: en, name: c.t };
+    else if (now < st && !nxt) nxt = { p: p.i, start: st, name: c.t };
+  }
+
+  if (cur) {
+    const el = document.querySelector('td[data-day="' + day + '"][data-period="' + cur.p + '"]');
+    if (el) el.classList.add('current');
+    const d = Math.max(0, Math.floor((cur.end - now) / 1000));
+    cd.innerText = '正在上课：还剩 ' + Math.floor(d/60) + '分' + pad(d%60) + '秒';
+    hint.innerText = pname(cur.p, usePeriods) + ' — ' + cur.name;
+  } else if (nxt) {
+    const el = document.querySelector('td[data-day="' + day + '"][data-period="' + nxt.p + '"]');
+    if (el) el.classList.add('next');
+    const d = Math.max(0, Math.floor((nxt.start - now) / 1000));
+    cd.innerText = '距离上课：' + Math.floor(d/60) + '分' + pad(d%60) + '秒';
+    hint.innerText = '准备 ' + pname(nxt.p, usePeriods) + ' — ' + nxt.name;
+  } else {
+    cd.innerText = '今日课程已全部结束';
+    hint.innerText = '辛苦了，好好休息！';
+  }
+}
+
+render();
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

@@ -30,7 +30,9 @@ class CalendarNativeService {
 
   /// 删除指定日历下的所有事件
   Future<Map<String, dynamic>> deleteAllEventsInCalendar(int calendarId) async {
-    if (Platform.isIOS) return _deleteAllEventsInCalendarIOS(calendarId.toString());
+    if (Platform.isIOS) {
+      return _deleteAllEventsInCalendarIOS(calendarId.toString());
+    }
     return _deleteAllEventsInCalendarAndroid(calendarId);
   }
 
@@ -42,17 +44,20 @@ class CalendarNativeService {
     final log = LogService.instance;
     try {
       final result = await _iosPlugin.retrieveCalendars();
-      final calendars = result.isSuccess ? (result.data ?? <Calendar>[]) : <Calendar>[];
+      final calendars =
+          result.isSuccess ? (result.data ?? <Calendar>[]) : <Calendar>[];
       log.i('$_tag [iOS] listCalendars: 找到 ${calendars.length} 个日历');
       for (final cal in calendars) {
         log.i('  ${cal.id}: ${cal.name} (${cal.accountName})');
       }
-      return calendars.map((c) => {
-        'id': int.tryParse(c.id ?? '0') ?? 0,
-        'name': c.name ?? '',
-        'accountName': c.accountName ?? '',
-        'accountType': c.accountType ?? '',
-      }).toList();
+      return calendars
+          .map((c) => {
+                'id': int.tryParse(c.id ?? '0') ?? 0,
+                'name': c.name ?? '',
+                'accountName': c.accountName ?? '',
+                'accountType': c.accountType ?? '',
+              })
+          .toList();
     } catch (e) {
       log.e('$_tag [iOS] listCalendars 失败: $e');
       return [];
@@ -68,7 +73,8 @@ class CalendarNativeService {
     try {
       final calendarsResult = await _iosPlugin.retrieveCalendars();
       final calendars = calendarsResult.isSuccess
-          ? (calendarsResult.data ?? <Calendar>[]) : <Calendar>[];
+          ? (calendarsResult.data ?? <Calendar>[])
+          : <Calendar>[];
 
       for (final cal in calendars) {
         if (cal.id == null || cal.isReadOnly == true) continue;
@@ -88,8 +94,9 @@ class CalendarNativeService {
           final desc = event.description ?? '';
           if (title.contains(keyword) || desc.contains(keyword)) {
             try {
-              final deleteResult = await _iosPlugin.deleteEvent(cal.id!, event.eventId);
-              if (deleteResult?.isSuccess == true) {
+              final deleteResult =
+                  await _iosPlugin.deleteEvent(cal.id!, event.eventId);
+              if (deleteResult.isSuccess == true) {
                 totalDeleted++;
                 logMessages.add('✅ 已删: $title (日历: ${cal.name})');
               } else {
@@ -111,7 +118,8 @@ class CalendarNativeService {
     return {'deleted': totalDeleted, 'log': logMessages.join('\n')};
   }
 
-  Future<Map<String, dynamic>> _deleteAllEventsInCalendarIOS(String calendarId) async {
+  Future<Map<String, dynamic>> _deleteAllEventsInCalendarIOS(
+      String calendarId) async {
     final log = LogService.instance;
     log.i('$_tag [iOS] deleteAllEventsInCalendar: calendarId=$calendarId');
     int totalDeleted = 0;
@@ -129,8 +137,9 @@ class CalendarNativeService {
       if (eventsResult.isSuccess && eventsResult.data != null) {
         for (final event in eventsResult.data!) {
           try {
-            final deleteResult = await _iosPlugin.deleteEvent(calendarId, event.eventId);
-            if (deleteResult?.isSuccess == true) totalDeleted++;
+            final deleteResult =
+                await _iosPlugin.deleteEvent(calendarId, event.eventId);
+            if (deleteResult.isSuccess == true) totalDeleted++;
           } catch (_) {}
         }
       }
@@ -150,7 +159,8 @@ class CalendarNativeService {
     final log = LogService.instance;
     try {
       final result = await _channel.invokeMethod('listCalendars');
-      final calendars = (result as List).map((e) => Map<String, dynamic>.from(e)).toList();
+      final calendars =
+          (result as List).map((e) => Map<String, dynamic>.from(e)).toList();
       log.i('$_tag listCalendars: 找到 ${calendars.length} 个日历');
       for (final cal in calendars) {
         log.i('  ${cal['id']}: ${cal['name']} (${cal['accountName']})');
@@ -162,7 +172,8 @@ class CalendarNativeService {
     }
   }
 
-  Future<Map<String, dynamic>> _deleteEventsByKeywordAndroid(String keyword) async {
+  Future<Map<String, dynamic>> _deleteEventsByKeywordAndroid(
+      String keyword) async {
     final log = LogService.instance;
     log.i('$_tag deleteEventsByKeyword: keyword=$keyword');
     try {
@@ -178,7 +189,8 @@ class CalendarNativeService {
     }
   }
 
-  Future<Map<String, dynamic>> _deleteAllEventsInCalendarAndroid(int calendarId) async {
+  Future<Map<String, dynamic>> _deleteAllEventsInCalendarAndroid(
+      int calendarId) async {
     final log = LogService.instance;
     log.i('$_tag deleteAllEventsInCalendar: calendarId=$calendarId');
     try {

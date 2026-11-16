@@ -95,44 +95,9 @@
     "teacher": "张老师",
     "color": 1
   },
-  {
-    "name": "高一1班",
-    "subject": "数学",
-    "dayOfWeek": 6,
-    "period": 2,
-    "teacher": "张老师",
-    "color": 2
-  },
-  {
-    "name": "高一1班",
-    "subject": "数学",
-    "dayOfWeek": 6,
-    "period": 2,
-    "teacher": "张老师",
-    "color": 3
-  },
-  {
-    "name": "高一1班",
-    "subject": "数学",
-    "dayOfWeek": 6,
-    "period": 3,
-    "teacher": "张老师",
-    "color": 4
-  },
-  {
-    "name": "高一1班",
-    "subject": "数学",
-    "dayOfWeek": 6,
-    "period": 3,
-    "teacher": "张老师",
-    "color": 5
-  },
-  {
-    "name": "高一1班",
-    "subject": "数学",
-    "dayOfWeek": 6,
-    "period": 1,
-    "teacher": "张老师",
-    "color": 6
-  }
+  {"name": "高一1班", "subject": "数学", "dayOfWeek": 6, "period": 2, "teacher": "张老师", "color": 2, "round": 1},
+  {"name": "高一1班", "subject": "英语", "dayOfWeek": 6, "period": 2, "teacher": "李老师", "color": 3, "round": 2},
+  {"name": "高一1班", "subject": "物理", "dayOfWeek": 6, "period": 3, "teacher": "王老师", "color": 4, "round": 1},
+  {"name": "高一1班", "subject": "化学", "dayOfWeek": 6, "period": 3, "teacher": "陈老师", "color": 5, "round": 3},
+  {"name": "高一1班", "subject": "语文", "dayOfWeek": 6, "period": 1, "teacher": "赵老师", "color": 6, "round": 2}
 ]

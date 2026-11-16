@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'services/database_service.dart';
 import 'services/notification_service.dart';
 import 'services/log_service.dart';
+import 'services/time_slot_service.dart';
 import 'app.dart';
 
 void main() async {
@@ -11,6 +12,10 @@ void main() async {
 
   // Initialize database
   await DatabaseService.instance.database;
+
+  // Load any user-customised class times BEFORE the first frame so that
+  // getTimeSlot() (home / timetable / notifications / calendar) sees them.
+  await TimeSlotService.instance.load();
 
   // Initialize notification service
   await NotificationService.instance.initialize();

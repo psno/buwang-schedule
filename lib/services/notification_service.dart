@@ -12,7 +12,8 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
   /// 初始化通知服务
@@ -24,7 +25,8 @@ class NotificationService {
       tz.initializeTimeZones();
       tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
 
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidSettings =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
       const darwinSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
@@ -45,16 +47,20 @@ class NotificationService {
       }
 
       // Android 13+ 动态请求通知权限
-      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
       final granted = await androidPlugin?.requestNotificationsPermission();
       debugPrint('通知权限(Android): $granted');
 
       // iOS 权限由 DarwinInitializationSettings 自动请求
       // 额外确认一下
-      final iosPlugin = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
       if (iosPlugin != null) {
         final iosGranted = await iosPlugin.requestPermissions(
-          alert: true, badge: true, sound: true,
+          alert: true,
+          badge: true,
+          sound: true,
         );
         debugPrint('通知权限(iOS): $iosGranted');
       }
@@ -83,7 +89,8 @@ class NotificationService {
     );
 
     await _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
   }
 
@@ -173,7 +180,8 @@ class NotificationService {
         tzTime,
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
       );
     } catch (e) {
       debugPrint('定时通知调度失败: $e');
@@ -233,7 +241,8 @@ class NotificationService {
         final dayOfWeek = course['dayOfWeek'] as int;
         final period = course['period'] as int;
 
-        final eventDate = semesterStart.add(Duration(days: week * 7 + (dayOfWeek - 1)));
+        final eventDate =
+            semesterStart.add(Duration(days: week * 7 + (dayOfWeek - 1)));
 
         final slot = _getPeriodTimeSlot(period, schoolType);
         if (slot == null) continue;
@@ -241,12 +250,13 @@ class NotificationService {
         final startHour = slot.startTime.hour;
         final startMinute = slot.startTime.minute;
 
-        final alarmTime = eventDate.add(Duration(hours: startHour, minutes: startMinute - minutesBefore));
+        final alarmTime = eventDate.add(
+            Duration(hours: startHour, minutes: startMinute - minutesBefore));
 
         if (alarmTime.isBefore(DateTime.now())) continue;
 
         final title = titleBuilder(course);
-        final body = '还有${minutesBefore}分钟开始上课';
+        final body = '还有$minutesBefore分钟开始上课';
 
         try {
           await scheduleNotification(
@@ -265,10 +275,14 @@ class NotificationService {
 
   /// 取消所有课程提醒
   Future<void> cancelAllCourseReminders() async {
-    for (int id = 1000; id < 100000; id += 100) {
-      try {
-        await _plugin.cancel(id);
-      } catch (_) {}
+    for (int week = 0; week < 100; week++) {
+      for (int i = 0; i < 100; i++) {
+        final id = 1000 + week * 100 + i;
+        if (id >= 100000) break;
+        try {
+          await _plugin.cancel(id);
+        } catch (_) {}
+      }
     }
   }
 

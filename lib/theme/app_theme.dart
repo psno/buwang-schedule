@@ -171,7 +171,7 @@ class AppTheme {
       canvasColor: isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7),
       cardColor: cs.surface,
       dividerColor: cs.outlineVariant,
-      disabledColor: cs.onSurface.withOpacity(0.38),
+      disabledColor: cs.onSurface.withValues(alpha: 0.38),
 
       appBarTheme: AppBarTheme(
         elevation: 0, scrolledUnderElevation: 0.5, centerTitle: true,
@@ -249,7 +249,7 @@ class AppTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? cs.surfaceContainerHighest : cs.surfaceContainerHighest.withOpacity(0.5),
+        fillColor: isDark ? cs.surfaceContainerHighest : cs.surfaceContainerHighest.withValues(alpha: 0.5),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_inputRadius),
@@ -279,8 +279,8 @@ class AppTheme {
       chipTheme: ChipThemeData(
         elevation: 0, pressElevation: 0,
         backgroundColor: cs.surfaceContainerHighest,
-        selectedColor: cs.primary.withOpacity(0.15),
-        disabledColor: cs.onSurface.withOpacity(0.12),
+        selectedColor: cs.primary.withValues(alpha: 0.15),
+        disabledColor: cs.onSurface.withValues(alpha: 0.12),
         labelStyle: textTheme.labelMedium,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_chipRadius), side: BorderSide.none),
@@ -304,7 +304,7 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         elevation: 0, height: 64,
         backgroundColor: cs.surface, surfaceTintColor: Colors.transparent,
-        indicatorColor: cs.primary.withOpacity(0.15),
+        indicatorColor: cs.primary.withValues(alpha: 0.15),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) return IconThemeData(color: cs.primary, size: 24);
           return IconThemeData(color: cs.onSurfaceVariant, size: 24);
@@ -410,7 +410,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_dialogRadius)),
         headerBackgroundColor: cs.primary,
         headerForegroundColor: cs.onPrimary,
-        todayBackgroundColor: WidgetStateProperty.all(cs.primary.withOpacity(0.1)),
+        todayBackgroundColor: WidgetStateProperty.all(cs.primary.withValues(alpha: 0.1)),
         todayForegroundColor: WidgetStateProperty.all(cs.primary),
         todayBorder: BorderSide(color: cs.primary, width: 1),
         weekdayStyle: textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant),

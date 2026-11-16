@@ -12,13 +12,13 @@ import 'utils/constants.dart';
 class BuwangApp extends StatefulWidget {
   const BuwangApp({super.key});
 
-  static final GlobalKey<_BuwangAppState> appKey = GlobalKey<_BuwangAppState>();
+  static final GlobalKey<BuwangAppState> appKey = GlobalKey<BuwangAppState>();
 
   @override
-  State<BuwangApp> createState() => _BuwangAppState();
+  State<BuwangApp> createState() => BuwangAppState();
 }
 
-class _BuwangAppState extends State<BuwangApp> {
+class BuwangAppState extends State<BuwangApp> {
   AppThemeColor _themeColor = AppThemeColor.blue;
 
   @override
@@ -39,7 +39,8 @@ class _BuwangAppState extends State<BuwangApp> {
 
   void setThemeColor(AppThemeColor color) {
     setState(() => _themeColor = color);
-    DatabaseService.instance.setSetting(AppConstants.keyThemeColor, color.index.toString());
+    DatabaseService.instance
+        .setSetting(AppConstants.keyThemeColor, color.index.toString());
   }
 
   AppThemeColor get themeColor => _themeColor;

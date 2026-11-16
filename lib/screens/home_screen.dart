@@ -7,6 +7,7 @@ import '../models/saturday_mode.dart';
 import '../utils/constants.dart';
 import '../utils/extensions.dart';
 import '../services/database_service.dart';
+import '../services/time_slot_service.dart';
 import '../theme/app_theme.dart';
 
 /// 不忘课表 - Home Screen (今日)
@@ -33,18 +34,33 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadTodayCourses();
     _loadSchoolType();
     _loadUserRole();
+    // 课程数据变更（导入/编辑）后刷新：IndexedStack 常驻页面不会自动重建。
+    DatabaseService.dataVersion.addListener(_onCourseDataChanged);
+    // 作息时间编辑保存后刷新当前/下一节状态卡与倒计时。
+    TimeSlotService.timeSlotVersion.addListener(_onTimeSlotChanged);
     // Update every minute for countdown
     _timer = Timer.periodic(const Duration(minutes: 1), (_) {
       setState(() => _now = DateTime.now());
     });
   }
 
+  void _onCourseDataChanged() {
+    if (mounted) _loadTodayCourses();
+  }
+
+  void _onTimeSlotChanged() {
+    if (mounted) setState(() => _now = DateTime.now());
+  }
+
   Future<void> _loadSchoolType() async {
     try {
       final value = await _db.getSetting(AppConstants.keySchoolType);
       if (value != null && mounted) {
+        final i = int.tryParse(value) ?? 0;
         setState(() {
-          _schoolType = SchoolType.values[int.tryParse(value) ?? 0];
+          _schoolType = (i >= 0 && i < SchoolType.values.length)
+              ? SchoolType.values[i]
+              : SchoolType.highSchool;
         });
       }
     } catch (_) {}
@@ -54,8 +70,11 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final value = await _db.getSetting(AppConstants.keyUserRole);
       if (value != null && mounted) {
+        final i = int.tryParse(value) ?? 0;
         setState(() {
-          _userRole = UserRole.values[int.tryParse(value) ?? 0];
+          _userRole = (i >= 0 && i < UserRole.values.length)
+              ? UserRole.values[i]
+              : UserRole.student;
         });
       }
     } catch (_) {}
@@ -63,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    DatabaseService.dataVersion.removeListener(_onCourseDataChanged);
+    TimeSlotService.timeSlotVersion.removeListener(_onTimeSlotChanged);
     _timer?.cancel();
     super.dispose();
   }
@@ -76,7 +97,10 @@ class _HomeScreenState extends State<HomeScreen> {
         if (today == 6) {
           // 周六：按轮次过滤
           final satMode = await _db.getSetting('saturday_mode');
-          final mode = SaturdayMode.values[int.tryParse(satMode ?? '0') ?? 0];
+          final modeIdx = int.tryParse(satMode ?? '0') ?? 0;
+          final mode = (modeIdx >= 0 && modeIdx < SaturdayMode.values.length)
+              ? SaturdayMode.values[modeIdx]
+              : SaturdayMode.off;
           if (mode != SaturdayMode.off) {
             _todayCourses = await _db.getSaturdayCourses(mode.index);
           } else {
@@ -137,7 +161,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildEmptyState(context)
                   else ...[
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 4),
                       child: Text(
                         '今日课程 (${_todayCourses.length}节)',
                         style: ts.titleSmall?.copyWith(
@@ -147,7 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    ..._todayCourses.map((c) => _buildCourseTimelineCard(context, c)),
+                    ..._todayCourses
+                        .map((c) => _buildCourseTimelineCard(context, c)),
                   ],
                   const SizedBox(height: 16),
                 ],
@@ -169,7 +195,8 @@ class _HomeScreenState extends State<HomeScreen> {
     TimeSlot? nextTimeSlot;
 
     for (final course in _todayCourses) {
-      final slot = getTimeSlot(course.period, dayOfWeek: now.weekday, schoolType: _schoolType);
+      final slot = getTimeSlot(course.period,
+          dayOfWeek: now.weekday, schoolType: _schoolType);
       final startMin = slot.startTime.hour * 60 + slot.startTime.minute;
       final endMin = slot.endTime.hour * 60 + slot.endTime.minute;
       final nowMin = now.hour * 60 + now.minute;
@@ -204,7 +231,7 @@ class _HomeScreenState extends State<HomeScreen> {
       statusText = '正在上课';
       final label = _userRole == UserRole.teacher
           ? '${currentCourse.name} · ${currentCourse.subject ?? ''}'
-          : '${currentCourse.subject ?? currentCourse.name}';
+          : currentCourse.subject ?? currentCourse.name;
       detailText = '$label · 还剩$remaining分钟';
     } else if (hasUpcoming) {
       final startParts = nextTimeSlot!.startTime;
@@ -213,20 +240,21 @@ class _HomeScreenState extends State<HomeScreen> {
       final until = startMin - nowMin;
       statusText = '即将上课';
       final label = _userRole == UserRole.teacher
-          ? '${nextCourse!.name} · ${nextCourse.subject ?? ''}'
-          : '${nextCourse!.subject ?? nextCourse.name}';
-      detailText = '$label · ${until}分钟后开始';
+          ? '${nextCourse.name} · ${nextCourse.subject ?? ''}'
+          : nextCourse.subject ?? nextCourse.name;
+      detailText = '$label · $until分钟后开始';
     } else if (_todayCourses.isNotEmpty) {
       statusText = '今日课程已结束';
       detailText = '今天共${_todayCourses.length}节课已全部完成';
     } else {
       statusText = '今日无课';
-      detailText = now.weekday == 6 || now.weekday == 7 ? '享受周末吧 🎉' : '好好休息吧 😊';
+      detailText =
+          now.weekday == 6 || now.weekday == 7 ? '享受周末吧 🎉' : '好好休息吧 😊';
     }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: cs.primaryContainer.withOpacity(0.4),
+      color: cs.primaryContainer.withValues(alpha: 0.4),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide.none,
@@ -261,10 +289,10 @@ class _HomeScreenState extends State<HomeScreen> {
               detailText,
               style: ts.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
-            if (isCurrentlyInClass && currentCourse != null) ...[
+            if (isCurrentlyInClass) ...[
               const SizedBox(height: 12),
               _buildCompactCourseInfo(context, currentCourse, currentTimeSlot!),
-            ] else if (hasUpcoming && nextCourse != null) ...[
+            ] else if (hasUpcoming) ...[
               const SizedBox(height: 12),
               _buildCompactCourseInfo(context, nextCourse, nextTimeSlot!),
             ],
@@ -275,7 +303,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Compact info row for the status card.
-  Widget _buildCompactCourseInfo(BuildContext context, Course course, TimeSlot slot) {
+  Widget _buildCompactCourseInfo(
+      BuildContext context, Course course, TimeSlot slot) {
     final cs = context.colorScheme;
     final ts = context.textTheme;
     final color = getCourseColor(course.color, isDark: context.isDarkMode);
@@ -288,22 +317,26 @@ class _HomeScreenState extends State<HomeScreen> {
       // 教师版: 班级名(主) + 科目(副)
       mainTitle = course.name; // 高一1班
       subTitle = [
-        if (course.subject != null && course.subject!.isNotEmpty) course.subject,
-        if (course.location != null && course.location!.isNotEmpty) course.location,
+        if (course.subject != null && course.subject!.isNotEmpty)
+          course.subject,
+        if (course.location != null && course.location!.isNotEmpty)
+          course.location,
       ].join(' · ');
     } else {
       // 学生版: 科目(主) + 老师(副)
       mainTitle = course.subject ?? course.name; // 数学
       subTitle = [
-        if (course.teacher != null && course.teacher!.isNotEmpty) course.teacher,
-        if (course.location != null && course.location!.isNotEmpty) course.location,
+        if (course.teacher != null && course.teacher!.isNotEmpty)
+          course.teacher,
+        if (course.location != null && course.location!.isNotEmpty)
+          course.location,
       ].join(' · ');
     }
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -355,7 +388,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final cs = context.colorScheme;
     final ts = context.textTheme;
     final color = getCourseColor(course.color, isDark: context.isDarkMode);
-    final slot = getTimeSlot(course.period, dayOfWeek: DateTime.now().weekday, schoolType: _schoolType);
+    final slot = getTimeSlot(course.period,
+        dayOfWeek: DateTime.now().weekday, schoolType: _schoolType);
     final now = _now;
     final nowMin = now.hour * 60 + now.minute;
     final startMin = slot.startTime.hour * 60 + slot.startTime.minute;
@@ -372,27 +406,31 @@ class _HomeScreenState extends State<HomeScreen> {
       // 教师版: 班级名(主) + 科目 · 教室(副)
       mainTitle = course.name;
       final sub = [
-        if (course.subject != null && course.subject!.isNotEmpty) course.subject,
-        if (course.location != null && course.location!.isNotEmpty) course.location,
+        if (course.subject != null && course.subject!.isNotEmpty)
+          course.subject,
+        if (course.location != null && course.location!.isNotEmpty)
+          course.location,
       ].join(' · ');
       secondaryLine = sub.isNotEmpty ? sub : null;
     } else {
       // 学生版: 科目(主) + 老师 · 教室(副)
       mainTitle = course.subject ?? course.name;
       final sub = [
-        if (course.teacher != null && course.teacher!.isNotEmpty) course.teacher,
-        if (course.location != null && course.location!.isNotEmpty) course.location,
+        if (course.teacher != null && course.teacher!.isNotEmpty)
+          course.teacher,
+        if (course.location != null && course.location!.isNotEmpty)
+          course.location,
       ].join(' · ');
       secondaryLine = sub.isNotEmpty ? sub : null;
     }
 
     final Color cardColor = isCurrent
-        ? AppTheme.currentClassColor.withOpacity(0.08)
+        ? AppTheme.currentClassColor.withValues(alpha: 0.08)
         : cs.surface;
     final Color borderColor = isCurrent
         ? AppTheme.currentClassColor
         : isPast
-            ? cs.outlineVariant.withOpacity(0.5)
+            ? cs.outlineVariant.withValues(alpha: 0.5)
             : cs.outlineVariant;
 
     return Padding(
@@ -420,7 +458,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   width: 2,
                   height: 60,
-                  color: isPast ? cs.outlineVariant : color.withOpacity(0.3),
+                  color:
+                      isPast ? cs.outlineVariant : color.withValues(alpha: 0.3),
                 ),
               ],
             ),
@@ -431,7 +470,8 @@ class _HomeScreenState extends State<HomeScreen> {
               color: cardColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
-                side: BorderSide(color: borderColor, width: isCurrent ? 1.5 : 0.5),
+                side: BorderSide(
+                    color: borderColor, width: isCurrent ? 1.5 : 0.5),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(14),
@@ -552,7 +592,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Icon(
               Icons.event_available,
               size: 64,
-              color: cs.onSurfaceVariant.withOpacity(0.4),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 16),
             Text(
@@ -565,7 +605,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               '去「课表」页面添加课程吧',
               style: ts.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant.withOpacity(0.7),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.7),
               ),
             ),
           ],

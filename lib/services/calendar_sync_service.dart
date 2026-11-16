@@ -73,10 +73,12 @@ class CalendarSyncService {
     final storedId = await _db.getSetting(_settingKeyCalendarId);
     if (storedId != null && storedId.isNotEmpty) {
       final checkResult = await _plugin.retrieveCalendars();
-      final calendars = checkResult.isSuccess ? (checkResult.data ?? []) : <Calendar>[];
+      final calendars =
+          checkResult.isSuccess ? (checkResult.data ?? []) : <Calendar>[];
       final hit = calendars.where((c) => c.id == storedId).firstOrNull;
       if (hit != null) {
-        log.i('$_tag 命中缓存 calendarId=$storedId, name=${hit.name}, account=${hit.accountName}');
+        log.i(
+            '$_tag 命中缓存 calendarId=$storedId, name=${hit.name}, account=${hit.accountName}');
         return storedId;
       }
       log.w('$_tag 缓存 calendarId=$storedId 已失效，重新定位');
@@ -84,21 +86,27 @@ class CalendarSyncService {
 
     // ② 扫描所有日历
     final calendarsResult = await _plugin.retrieveCalendars();
-    final allCalendars = calendarsResult.isSuccess ? (calendarsResult.data ?? <Calendar>[]) : <Calendar>[];
+    final allCalendars = calendarsResult.isSuccess
+        ? (calendarsResult.data ?? <Calendar>[])
+        : <Calendar>[];
     log.i('$_tag 扫描到 ${allCalendars.length} 个日历');
 
     // ③ 放宽匹配：名字/accountName/displayName 包含关键词
     final matchingCalendars = allCalendars.where((c) {
       final n = (c.name ?? '').toLowerCase();
       final an = (c.accountName ?? '').toLowerCase();
-      return n.contains('不忘') || n.contains('课表') ||
-             an.contains('不忘') || an.contains('课表') ||
-             n == _calendarName.toLowerCase() || an == _calendarName.toLowerCase();
+      return n.contains('不忘') ||
+          n.contains('课表') ||
+          an.contains('不忘') ||
+          an.contains('课表') ||
+          n == _calendarName.toLowerCase() ||
+          an == _calendarName.toLowerCase();
     }).toList();
 
     log.i('$_tag 宽松匹配找到 ${matchingCalendars.length} 个候选');
     for (final c in matchingCalendars) {
-      log.i('  候选: id=${c.id}, name=${c.name}, account=${c.accountName}, readOnly=${c.isReadOnly}');
+      log.i(
+          '  候选: id=${c.id}, name=${c.name}, account=${c.accountName}, readOnly=${c.isReadOnly}');
     }
 
     if (matchingCalendars.isNotEmpty) {
@@ -116,7 +124,8 @@ class CalendarSyncService {
 
     // ④ 打印全部日历供调试
     for (final c in allCalendars) {
-      log.i('  全部: id=${c.id}, name=${c.name}, account=${c.accountName}, type=${c.accountType}');
+      log.i(
+          '  全部: id=${c.id}, name=${c.name}, account=${c.accountName}, type=${c.accountType}');
     }
 
     // ⑤ 真的没有才创建
@@ -176,7 +185,8 @@ class CalendarSyncService {
       log.e('$_tag 没有课程数据');
       return SyncResult.error('没有课程数据，请先导入课表');
     }
-    log.i('$_tag 共 ${courses.length} 个课程，将创建 ${courses.length * totalWeeks} 个事件');
+    log.i(
+        '$_tag 共 ${courses.length} 个课程，将创建 ${courses.length * totalWeeks} 个事件');
 
     // 获取用户角色和学校类型
     final roleStr = await _db.getSetting(AppConstants.keyUserRole);
@@ -208,12 +218,18 @@ class CalendarSyncService {
         );
 
         final startDateTime = DateTime(
-          eventDate.year, eventDate.month, eventDate.day,
-          slot.startTime.hour, slot.startTime.minute,
+          eventDate.year,
+          eventDate.month,
+          eventDate.day,
+          slot.startTime.hour,
+          slot.startTime.minute,
         );
         final endDateTime = DateTime(
-          eventDate.year, eventDate.month, eventDate.day,
-          slot.endTime.hour, slot.endTime.minute,
+          eventDate.year,
+          eventDate.month,
+          eventDate.day,
+          slot.endTime.hour,
+          slot.endTime.minute,
         );
 
         // 构建事件标题和描述（根据角色）
@@ -266,9 +282,10 @@ class CalendarSyncService {
 
       if (events.isSuccess && events.data != null) {
         for (final event in events.data!) {
-          if (event.title != null && _isOurEvent(event.title!, description: event.description)) {
+          if (event.title != null &&
+              _isOurEvent(event.title!, description: event.description)) {
             final result = await _plugin.deleteEvent(calendarId, event.eventId);
-            if (result?.isSuccess == true) deletedCount++;
+            if (result.isSuccess == true) deletedCount++;
           }
         }
       }
@@ -312,7 +329,7 @@ class CalendarSyncService {
   /// 构建事件描述
   String _buildEventDescription(Course course, UserRole role, int week) {
     final parts = <String>[
-      '【不忘课表】第${week}周',
+      '【不忘课表】第$week周',
       '',
       if (course.subject != null) '科目: ${course.subject}',
       '班级: ${course.name}',
@@ -331,7 +348,8 @@ class CalendarSyncService {
 
     try {
       // 用原生删除含"不忘课表"标签的事件（我们的描述里有【不忘课表】）
-      final result = await CalendarNativeService.instance.deleteEventsByKeyword('不忘课表');
+      final result =
+          await CalendarNativeService.instance.deleteEventsByKeyword('不忘课表');
       final deleted = result['deleted'] ?? 0;
 
       await _db.setSetting(_settingKeyLastSync, '');
@@ -339,7 +357,8 @@ class CalendarSyncService {
       await _db.setSetting(_settingKeyCalendarId, '');
 
       if (deleted > 0) {
-        return SyncResult._(success: true, customMessage: '已清除 $deleted 个课表日历事件');
+        return SyncResult._(
+            success: true, customMessage: '已清除 $deleted 个课表日历事件');
       } else {
         return SyncResult._(success: true, customMessage: '日历中没有找到课表事件');
       }
@@ -378,14 +397,17 @@ class CalendarSyncService {
     final List<String> debugLog = [];
     try {
       // ① 先用原生列出所有日历
-      final nativeCalendars = await CalendarNativeService.instance.listCalendars();
+      final nativeCalendars =
+          await CalendarNativeService.instance.listCalendars();
       debugLog.add('原生扫描到 ${nativeCalendars.length} 个日历账户');
       for (final cal in nativeCalendars) {
-        debugLog.add('  ${cal['id']}: ${cal['name']} (账户: ${cal['accountName']}, 类型: ${cal['accountType']})');
+        debugLog.add(
+            '  ${cal['id']}: ${cal['name']} (账户: ${cal['accountName']}, 类型: ${cal['accountType']})');
       }
 
       // ② 用原生删除含"课表"的事件
-      final deleteResult = await CalendarNativeService.instance.deleteEventsByKeyword('课表');
+      final deleteResult =
+          await CalendarNativeService.instance.deleteEventsByKeyword('课表');
       final deleted = deleteResult['deleted'] ?? 0;
       final nativeLog = deleteResult['log'] ?? '';
       debugLog.add('');
@@ -393,7 +415,8 @@ class CalendarSyncService {
       debugLog.add(nativeLog);
 
       // ③ 再用原生删除含"不忘"的事件
-      final deleteResult2 = await CalendarNativeService.instance.deleteEventsByKeyword('不忘');
+      final deleteResult2 =
+          await CalendarNativeService.instance.deleteEventsByKeyword('不忘');
       final deleted2 = deleteResult2['deleted'] ?? 0;
       final nativeLog2 = deleteResult2['log'] ?? '';
       debugLog.add('');
@@ -443,8 +466,7 @@ class SyncResult {
   factory SyncResult.success(int count, int weeks) =>
       SyncResult._(success: true, syncedCount: count, totalWeeks: weeks);
 
-  factory SyncResult.partial(int success, int fail, int weeks) =>
-      SyncResult._(
+  factory SyncResult.partial(int success, int fail, int weeks) => SyncResult._(
         success: true,
         syncedCount: success,
         failedCount: fail,
@@ -458,9 +480,9 @@ class SyncResult {
     if (_customMessage != null) return _customMessage!;
     if (!success) return '同步失败: $error';
     if (failedCount > 0) {
-      return '部分同步成功: ${syncedCount}节成功, ${failedCount}节失败 (共${totalWeeks}周)';
+      return '部分同步成功: $syncedCount节成功, $failedCount节失败 (共$totalWeeks周)';
     }
-    return '同步成功! 已将 ${syncedCount} 节课写入系统日历 (共${totalWeeks}周)';
+    return '同步成功! 已将 $syncedCount 节课写入系统日历 (共$totalWeeks周)';
   }
 }
 
@@ -480,7 +502,7 @@ class SyncInfo {
 
   String get displayText {
     if (lastSyncTime == null) return '尚未同步';
-    return '已同步${syncedWeeks}周 · ${_formatTime(lastSyncTime!)}';
+    return '已同步$syncedWeeks周 · ${_formatTime(lastSyncTime!)}';
   }
 
   String _formatTime(DateTime dt) {

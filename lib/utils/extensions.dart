@@ -204,12 +204,12 @@ extension DateTimeExtensions on DateTime {
 
   /// Format as "MM月dd日"
   String get dateFormattedChinese {
-    return '${month}月$day日';
+    return '$month月$day日';
   }
 
   /// Format as "yyyy年MM月dd日"
   String get dateFormattedFullChinese {
-    return '${year}年${month}月$day日';
+    return '$year年$month月$day日';
   }
 
   /// Format as "MM/dd"
