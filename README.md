@@ -46,7 +46,7 @@
 
 ### Android
 
-**最新版本：[v1.4.4](https://github.com/psno/buwang-schedule/releases/tag/v1.4.4)**
+**最新版本：[v1.4.6](https://github.com/psno/buwang-schedule/releases/tag/v1.4.6)**
 
 前往 [Releases](https://github.com/psno/buwang-schedule/releases) 页面下载 APK。
 
@@ -107,6 +107,16 @@ lib/
 ```
 
 ## 更新日志
+
+### v1.4.6 (2026-11-16)
+- ✨ 支持 JSON 课表文件导入（修复 Android 端选不到 .json 文件的问题）
+- ✨ 支持新版教务系统导出的 HTML 课表（`const DATA` 格式）
+- ✨ 导入前自动全量备份，支持「撤销上次导入」一键回滚
+- ✨ 导出的备份文件包含课程、设置、提醒与作息时间，可完整还原
+- 🐛 修复作息时间编辑后不生效（现在会自动保存并同步提醒）
+- 🐛 修复同一时段多门课程只显示一门的问题
+- 🐛 修复越界节次被错误显示为早自习的问题
+- 🧹 静态分析零问题，新增 17 个自动化测试
 
 ### v1.4.4 (2026-05-15)
 - ✨ 新增 iOS 跨平台适配
